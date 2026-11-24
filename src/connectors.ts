@@ -80,8 +80,14 @@ export function parseConnectorList(raw: unknown): ConnectorInfo[] {
     const id = pickString(o, ['connection_id', 'connectionId', 'id']);
     if (provider && id) {
       const info: ConnectorInfo = { id, provider, raw: node };
-      const scopes = o.scopes ?? o.granted_scopes ?? o.grantedScopes;
-      if (Array.isArray(scopes)) info.scopes = scopes.filter((s): s is string => typeof s === 'string');
+      const raw = o.scopes ?? o.granted_scopes ?? o.grantedScopes;
+      // The gateway hands scopes back as a comma-separated string ("read:org,repo"), not an
+      // array, so an Array-only check silently renders an empty scope list on /proof, which is
+      // the one page whose job is to show exactly this.
+      const scopes = typeof raw === 'string' ? raw.split(',') : raw;
+      if (Array.isArray(scopes)) {
+        info.scopes = scopes.map((s) => String(s).trim()).filter((s): s is string => s.length > 0);
+      }
       const snippet = pickString(o, ['usage_snippet', 'usageSnippet', 'example']);
       if (snippet) info.usageSnippet = snippet;
       out.push(info);
