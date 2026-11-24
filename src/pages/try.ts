@@ -50,6 +50,15 @@ export function renderTry(v: TryView): string {
     : ''}
   <h3>The ladder, in the order it will happen</h3>
   ${ladder}
+  <h3>What to look at next</h3>
+  <ul class="plain">
+    <li><a href="/">Home</a> — the live phase, the streak, and the honest note about what wakes it</li>
+    <li><a href="/ledger">Notice board</a> — every state change in order, with receipts</li>
+    <li><a href="/verify">Verify</a> — your browser recomputes the hash chain</li>
+    <li><a href="/proof">No keys</a> — what this box can and cannot read</li>
+  </ul>
+  <p class="muted small">Signing replaces the previous demo will and issues new witness links; the old
+  links stop working. That is deliberate — witness rows are replaced, not reused.</p>
 </section>
 
 <section class="card">
@@ -107,6 +116,21 @@ export function renderTry(v: TryView): string {
       el.textContent = fmt(ms);
       if (ms === 0) location.reload();        // the reload is the wake
     }, 1000);
+
+    // A scaled-to-zero machine takes a few seconds to answer. Say so instead of looking hung.
+    let waking = false;
+    const ping = async () => {
+      try {
+        const res = await fetch('/healthz', { cache: 'no-store' });
+        if (!res.ok) throw new Error('bad status');
+        if (waking) { waking = false; el.dataset.waking = '0'; location.reload(); }
+      } catch {
+        waking = true;
+        el.dataset.waking = '1';
+        el.textContent = 'waking…';
+      }
+    };
+    setInterval(ping, 4000);
   }
 })();
 </script>`;

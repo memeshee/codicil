@@ -82,12 +82,29 @@ export function renderHome(v: HomeView): string {
     : '';
 
   const tryCard = v.canTry
-    ? `<section class="card">
-  <p class="kicker">no token needed</p>
-  <h1>Watch it run in 60 seconds.</h1>
-  <p>This instance is a demo. Seal a throwaway will on <a href="/try">/try</a> and the ladder walks
-  itself: declared silence, nudge, witnesses, execution, receipts. Every row is labelled
-  <code>DEMO</code>.</p>
+    ? `<section class="card wake">
+  <p class="kicker">this is a demo instance · no token needed · start here</p>
+  <h1>How to use this demo.</h1>
+  <p>Everything on this page is real: the same code that would run on a Sprite, with the clock
+  compressed so you can watch a whole custody cycle in about a minute. Every row it writes is
+  labelled <code>DEMO</code>.</p>
+  <ol class="ops">
+    <li><b>Sign a throwaway will</b> at <a href="/try">/try</a> — or follow this link, prefilled for
+      you: <a href="/try?name=a%20visitor&amp;letter=I%20left%20the%20fig%20tree%20to%20Ada.&amp;witnesses=Ada">sign and watch</a>.</li>
+    <li><b>Watch the phase</b> at the top of this page. It moves on its own:
+      ARMED → CONCERNED (deadline missed, a nudge goes out) → PLEADING (the witnesses are written to)
+      → EXECUTING → EXECUTED.</li>
+    <li><b>Every reload is a wake.</b> A Sprite has no clock, so each request is what makes time pass
+      here. Refreshing the page genuinely advances the ladder — the demo is not a recording.</li>
+    <li><b>Read what it did</b> on the <a href="/ledger">notice board</a>, then check the chain
+      yourself on <a href="/verify">/verify</a>: your browser recomputes every hash.</li>
+    <li><b>Answer as a witness.</b> Signing gives you private witness links — open one and try
+      "I know they are safe" and "I don't know". Both are recorded; only the first stands the clock down.</li>
+    <li><b>Reset it</b> with the owner token, printed on /try after you sign. Pasting it into the
+      check-in box on this page returns the ladder to ARMED.</li>
+  </ol>
+  <p class="muted small">If nothing loads for a few seconds, the machine is asleep and waking —
+  this instance scales to zero between visitors. It answers on its own.</p>
 </section>`
     : '';
 

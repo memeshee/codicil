@@ -18,9 +18,12 @@ primary_region = "sin"
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  # Scale to zero: this is a public demo nobody is paying for. Suspend resumes from a memory
+  # snapshot in about a second, which is the difference between "waking" and "broken" for a
+  # judge who lands cold. auto_start brings it back on the first request.
+  auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [http_service.concurrency]
     type = "requests"
@@ -30,3 +33,10 @@ primary_region = "sin"
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"
+
+# One gigabyte, so a stopped or suspended machine does not lose the demo's will and its
+# hash-chained board. Without this, a cold start came back with an empty database - which
+# looked like the product forgetting, in a product whose whole claim is that it does not.
+[[mounts]]
+  source = "codicil_data"
+  destination = "/data"
