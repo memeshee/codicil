@@ -87,6 +87,14 @@ function rateLimited(key: string, limit = 10, windowMs = 60_000): boolean {
   return arr.length > limit;
 }
 
+/** Absolute base URL as the caller saw it. Behind Fly's proxy the scheme is forwarded. */
+function baseUrl(req: IncomingMessage): string {
+  const host = req.headers.host ?? 'localhost';
+  const proto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0]?.trim();
+  const scheme = proto === 'https' || proto === 'http' ? proto : host.startsWith('localhost') ? 'http' : 'https';
+  return `${scheme}://${host}`;
+}
+
 function clientKey(req: IncomingMessage): string {
   return (req.socket.remoteAddress ?? 'unknown') + ':' + (req.headers['x-forwarded-for'] ?? '');
 }
@@ -417,6 +425,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       200,
       renderTry({
         will,
+        prefill: {
+          name: url.searchParams.get('name') ?? undefined,
+          letter: url.searchParams.get('letter') ?? undefined,
+          witnesses: url.searchParams.get('witnesses') ?? undefined,
+        },
         snapshot: toSnapshot(store.getState(now), will),
         msToNextBoundary: msToNextBoundary(store.getState(now), will, now),
         demoToken: store.getKVPublic<string>('demoToken') ?? '',
@@ -454,8 +467,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const r = applyWillSigned(store.getState(now), will, now);
       store.setState(r.state);
       r.events.forEach((e) => store.appendEvent(e.kind, { ...e.detail, demo: true }, now));
-      const host = `http://${req.headers.host ?? 'localhost'}`;
-      const links = created.map((c) => ({ name: c.row.name, url: `${host}/w/${c.row.id}/${c.token}` }));
+      const links = created.map((c) => ({ name: c.row.name, url: `${baseUrl(req)}/w/${c.row.id}/${c.token}` }));
+      if (String(req.headers.accept ?? '').includes('text/html')) {
+        // A browser signing from /try lands back on the live ladder, not on raw JSON.
+        redirect(res, '/try');
+        return;
+      }
       sendJson(res, 200, { ok: true, demoToken, phase: r.state.phase, witnesses: links, ladderMinutes: will.policy });
     } catch (err) {
       sendJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -534,7 +551,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       store.setState(r.state);
       r.events.forEach((e) => store.appendEvent(e.kind, { ...e.detail, demo: DEMO }, now));
 
-      const base = `http://${req.headers.host ?? 'localhost'}`;
+      const base = baseUrl(req);
       const links = created.map((c) => ({ name: c.row.name, url: `${base}/w/${c.row.id}/${c.token}` }));
       const body = `
 <section class="card">

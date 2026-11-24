@@ -15,6 +15,8 @@ export interface TryView {
   repo: string;
   channel: string;
   demo: boolean;
+  /** Prefilled from the query string, so a demo can be driven by a link alone. */
+  prefill?: { name?: string; letter?: string; witnesses?: string };
 }
 
 export function renderTry(v: TryView): string {
@@ -54,13 +56,13 @@ export function renderTry(v: TryView): string {
   <p class="kicker">seal a demo will</p>
   <form id="tryform" method="post" action="/try">
     <label for="tname">your name</label>
-    <input id="tname" name="name" placeholder="a visitor" value="${v.will ? escapeHtml(v.will.owner.name) : ''}">
+    <input id="tname" name="name" placeholder="a visitor" value="${escapeHtml(v.prefill?.name ?? (v.will ? v.will.owner.name : ''))}">
     <label for="tletter">your words — carried verbatim, in the clear</label>
     <textarea id="tletter" name="letter" rows="3" placeholder="Say the thing you would actually say.">${
-      v.will ? escapeHtml(v.will.letter) : ''
+      escapeHtml(v.prefill?.letter ?? (v.will ? v.will.letter : ''))
     }</textarea>
     <label for="twit">witnesses — <code>Name &lt;U0123ABCD&gt;</code>, comma separated (optional)</label>
-    <input id="twit" name="witnesses" placeholder="Ada <U0123ABCD>">
+    <input id="twit" name="witnesses" placeholder="Ada <U0123ABCD>" value="${escapeHtml(v.prefill?.witnesses ?? '')}">
     <label for="tsealed">a private thing, sealed (optional)</label>
     <textarea id="tsealed" rows="2" placeholder="Type it. It is encrypted in your browser before it is sent — this box will never read it."></textarea>
     <label for="tpass">passphrase for the sealed words</label>
