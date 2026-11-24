@@ -90,7 +90,7 @@ ${links}
   <form id="revokeform" method="post" action="/api/revoke" data-json="1">
     <label for="rtok">owner token</label>
     <input id="rtok" name="token" type="password" required>
-    <div class="row">
+    <div class="buttonrow">
       <button type="submit" name="action" value="revoke">Withdraw consent</button>
       <button type="submit" name="action" value="rotate" formaction="/api/rotate">Rotate token</button>
     </div>

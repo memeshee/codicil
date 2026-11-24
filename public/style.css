@@ -571,8 +571,7 @@ button.ghost:hover {
   filter: none;
 }
 
-.checkin,
-.row {
+.checkin {
   display: flex;
   gap: 0.6rem;
   align-items: flex-end;
@@ -583,19 +582,39 @@ button.ghost:hover {
   flex: 1 1 12rem;
 }
 
-.checkin button,
-.row button {
+.checkin button {
   margin-top: 0;
 }
 
+/* Fields: label above input, four across on desktop, wrapping before they ever squeeze. */
 .row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.7rem 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.2rem 0.8rem;
+  margin: 0.2rem 0 0.4rem;
 }
 
 .row label {
-  margin-top: 0.6rem;
+  margin-top: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+/*
+ * Buttons get their own row. They are sized to their label, they never wrap, and they carry
+ * their own vertical margin, so two long labels cannot collide the way they did inside a
+ * four-column field grid.
+ */
+.buttonrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 1.15rem 0 0.9rem;
+}
+
+.buttonrow button {
+  flex: 0 0 auto;
+  margin-top: 0;
 }
 
 /* ---------- the ledger: a record, not a feed ---------- */
@@ -679,16 +698,28 @@ ol.board .notice.empty {
 
 /* ---------- a figure, when there is a real one ---------- */
 
-/* The diagram is dense at column width; let it break into the margin to buy back scale. */
+/* The diagram sits on the page's own centre line, not the text column's. */
 figure {
-  margin: 1.4rem 0 0;
   grid-column: 1 / -1;
+  margin: 1.6rem auto 0;
+  width: 100%;
+  max-width: 62rem;
+  text-align: center;
 }
 
-@media (min-width: 58.0625rem) {
-  figure {
-    margin-left: calc(var(--margin-col) * -1 - 2.6rem);
-  }
+figure img {
+  width: 100%;
+  max-width: 62rem;
+  margin: 0 auto;
+  display: block;
+  border: 1px solid var(--rule-soft);
+  background: var(--paper-raised);
+}
+
+figure figcaption {
+  text-align: left;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 figure img {
