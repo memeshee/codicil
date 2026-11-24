@@ -29,6 +29,25 @@ you would want said, and the handful of actions you want taken, if you stop answ
 
 Everything either phase does is on `/ledger`. Nothing on that page is a letter body.
 
+![Trust and wake architecture](docs/trust-wake.svg)
+
+The two paths that matter: **the trust path** (every outward call crosses Fly's connector
+gateway, which holds the credential) and **the wake path** (a Sprite has no scheduler, so every
+way time can pass is named).
+
+## Evidence you can re-run
+
+The repository ships the probes rather than a claim that probing happened:
+
+```
+scripts/probe-wake.sh inside     # P0/P1: node+sqlite, disk persistence, boot counter, task hold
+scripts/probe-wake.sh outside <url>   # P1b: wake-on-request latency, measured from outside
+scripts/probe-connectors.sh --write   # P2: gateway catalogue, then a real issue + Slack message
+scripts/probe-llm.sh             # P3: the exact model path the gateway exposes
+scripts/demo-driver.sh           # the whole ladder, ARMED -> EXECUTED, in one run
+```
+
+
 ## Honest engineering notes
 
 **There is no scheduler on a Sprite.** It pauses about 30 seconds after activity stops and

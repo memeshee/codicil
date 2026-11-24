@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 720" width="1180" height="720" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="Codicil trust and wake architecture: an executor on a Fly.io Sprite that reaches GitHub, Slack and a model only through the connector gateway, which injects credentials; the Sprite is woken only by inbound requests from check-ins, witness visits and two independent pingers.">
+  <style>
+    .bg { fill: #f7f4ee; }
+    .box { fill: #fffdf8; stroke: #d8d0c0; stroke-width: 1.5; }
+    .sprite { fill: #fffdf8; stroke: #1d1b17; stroke-width: 2; }
+    .gw { fill: #1d1b17; }
+    .gwt { fill: #f7f4ee; }
+    .t { fill: #1d1b17; font-size: 15px; }
+    .th { fill: #1d1b17; font-size: 17px; font-weight: 600; }
+    .ts { fill: #56514a; font-size: 12.5px; }
+    .tw { fill: #f7f4ee; font-size: 14px; }
+    .tws { fill: #c9c2b4; font-size: 11.5px; }
+    .acc { fill: #9a3412; }
+    .kicker { fill: #56514a; font-size: 11.5px; letter-spacing: 1.6px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: #56514a; }
+    .arrow { stroke: #56514a; stroke-width: 1.6; fill: none; marker-end: url(#ah); }
+    .arrowA { stroke: #9a3412; stroke-width: 1.8; fill: none; marker-end: url(#ahA); }
+    .noauth { stroke: #9a3412; stroke-dasharray: 5 4; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#56514a"/>
+    </marker>
+    <marker id="ahA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a3412"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1180" height="720"/>
+  <text class="th" x="40" y="46" font-size="22">Codicil — the trust path and the wake path</text>
+  <text class="ts" x="40" y="70">An executor that holds no key. Every claim on this diagram is checkable in the repository or on the running box.</text>
+
+  <!-- SPRITE -->
+  <rect class="sprite" x="40" y="104" width="360" height="392" rx="6"/>
+  <text class="kicker" x="60" y="132">FLY.IO SPRITE — THE AGENT LIVES HERE</text>
+  <text class="t" x="60" y="158" font-weight="600">codicil (Sprite Service)</text>
+  <text class="ts" x="60" y="178">node loop · restarts at boot · 100 GB disk</text>
+
+  <rect class="box" x="60" y="196" width="320" height="86" rx="4"/>
+  <text class="t" x="76" y="220">state machine</text>
+  <text class="ts" x="76" y="240" style="font-size:11px">ARMED → CONCERNED → PLEADING → EXECUTING</text>
+  <text class="ts" x="76" y="258">resets only on owner check-in or witness vouch</text>
+  <text class="ts" x="76" y="274">investigation never resets — it informs</text>
+
+  <rect class="box" x="60" y="294" width="320" height="72" rx="4"/>
+  <text class="t" x="76" y="318">SQLite on the persistent disk</text>
+  <text class="ts" x="76" y="338">will · witnesses (hashed tokens) · instructions</text>
+  <text class="ts" x="76" y="356">events: append-only, no update or delete path</text>
+
+  <rect class="box" x="60" y="378" width="320" height="52" rx="4"/>
+  <text class="t" x="76" y="402">public notice board  /ledger</text>
+  <text class="ts" x="76" y="420">metadata and receipts only, never letter bodies</text>
+
+  <rect class="box" x="60" y="440" width="320" height="40" rx="4" fill="#fff7e6" stroke="#f6c453"/>
+  <text class="t" x="76" y="465" font-size="13.5">no credential is stored in this box</text>
+
+  <!-- GATEWAY -->
+  <rect class="gw" x="470" y="176" width="250" height="248" rx="6"/>
+  <text class="tw" x="490" y="206" font-weight="600">Sprites Connector gateway</text>
+  <text x="490" y="228" font-size="12.5" fill="#f6c453">no Authorization header, ever</text>
+  <text x="490" y="252" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#c9c2b4">api.sprites.dev/v1/gateway</text>
+  <text class="tws" x="490" y="280">the credential lives here, encrypted,</text>
+  <text class="tws" x="490" y="296">in the org — never on the Sprite</text>
+  <text class="tws" x="490" y="322">the caller is authenticated by that</text>
+  <text class="tws" x="490" y="338">sprite's platform identity</text>
+  <text class="tws" x="490" y="364">deny-by-default · scoped by label,</text>
+  <text class="tws" x="490" y="380">name prefix and request path</text>
+
+  <!-- PROVIDERS -->
+  <rect class="box" x="810" y="128" width="300" height="72" rx="4"/>
+  <text class="t" x="828" y="154">GitHub</text>
+  <text class="ts" x="828" y="174">read public activity · open the farewell issue</text>
+
+  <rect class="box" x="810" y="214" width="300" height="72" rx="4"/>
+  <text class="t" x="828" y="240">Slack</text>
+  <text class="ts" x="828" y="260">nudge the owner · write to the witnesses</text>
+
+  <rect class="box" x="810" y="300" width="300" height="72" rx="4"/>
+  <text class="t" x="828" y="326">Ollama / OpenRouter</text>
+  <text class="ts" x="828" y="346">the closing note · templates if no model</text>
+
+  <rect class="box" x="810" y="386" width="300" height="52" rx="4" stroke-dasharray="4 3"/>
+  <text class="t" x="828" y="410" font-size="13.5">S3 · email — SHOULD-ship</text>
+  <text class="ts" x="828" y="428">same gateway, same absence of keys</text>
+
+  <!-- ARROWS: sprite -> gateway -> providers -->
+  <path class="arrowA" d="M380 268 L466 268"/>
+  <text class="acc" x="404" y="258" font-size="11.5">call</text>
+  <path class="arrow" d="M720 240 L806 168"/>
+  <path class="arrow" d="M720 268 C760 268 770 250 806 250"/>
+  <path class="arrow" d="M720 300 L806 336"/>
+  <path class="arrow" d="M720 330 C760 340 770 400 806 410"/>
+
+  <text class="ts" x="470" y="452" font-size="12">the gateway injects the credential on the way out;</text>
+  <text class="ts" x="470" y="470" font-size="12">the response streams back as if the Sprite had called directly</text>
+
+  <!-- WAKE PATH -->
+  <rect class="box" x="40" y="530" width="1070" height="152" rx="6" fill="#fffdf8"/>
+  <text class="kicker" x="60" y="558">THE WAKE PATH — A SPRITE HAS NO SCHEDULER, SO EVERY WAY TIME PASSES IS NAMED</text>
+
+  <rect class="box" x="60" y="576" width="196" height="66" rx="4"/>
+  <text class="t" x="76" y="600" font-size="13.5">owner check-in</text>
+  <text class="ts" x="76" y="620">POST /api/checkin</text>
+
+  <rect class="box" x="276" y="576" width="196" height="66" rx="4"/>
+  <text class="t" x="292" y="600" font-size="13.5">witness opens notice</text>
+  <text class="ts" x="292" y="620">GET /w/:id/:token</text>
+
+  <rect class="box" x="492" y="576" width="196" height="66" rx="4"/>
+  <text class="t" x="508" y="600" font-size="13.5">pinger #1</text>
+  <text class="ts" x="508" y="620">GitHub Action, 30 min</text>
+
+  <rect class="box" x="708" y="576" width="196" height="66" rx="4"/>
+  <text class="t" x="724" y="600" font-size="13.5">pinger #2</text>
+  <text class="ts" x="724" y="620">cron-job.org, 30 min</text>
+
+  <rect class="box" x="924" y="576" width="166" height="66" rx="4" fill="#fff7e6" stroke="#f6c453"/>
+  <text class="t" x="940" y="600" font-size="13.5">hold task</text>
+  <text class="ts" x="940" y="620">/.sprite/api.sock</text>
+
+  <path class="arrow" d="M158 572 L158 500"/>
+  <path class="arrow" d="M374 572 C374 520 330 512 300 500"/>
+  <path class="arrow" d="M590 572 C560 540 480 520 400 476"/>
+  <path class="arrow" d="M806 572 C740 540 500 520 400 476"/>
+  <path class="arrowA" d="M1006 572 C900 520 500 500 396 476"/>
+
+  <text class="ts" x="60" y="666">Each of these is an inbound request, and an inbound request is the only thing that makes a paused Sprite run. POST /tick runs the state machine once.</text>
+  <text class="acc" x="60" y="684" font-size="12">If both pingers fail the deadline slips. That limitation is printed on the home page and in the README, not hidden.</text>
+</svg>
