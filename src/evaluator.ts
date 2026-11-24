@@ -47,7 +47,14 @@ export function evaluate(state: MachineState, will: Will | null, now: string): E
   const next: MachineState = { ...state, grace: { ...state.grace } };
   const events: Transition[] = [];
 
-  if (!will || next.willVersion === 0 || next.phase === 'DORMANT' || next.phase === 'EXECUTED' || next.phase === 'EXECUTING') {
+  if (
+    !will ||
+    next.willVersion === 0 ||
+    next.phase === 'DORMANT' ||
+    next.phase === 'EXECUTED' ||
+    next.phase === 'EXECUTING' ||
+    next.phase === 'REVOKED'
+  ) {
     return { state: next, events };
   }
 
@@ -110,6 +117,8 @@ export function applyCheckIn(state: MachineState, will: Will | null, now: string
   }
 
   next.lastCheckIn = now;
+  next.vouchIds = [];
+  next.vouchResets = 0;
   if (dayKey !== next.lastDayKey) {
     next.streakDays += 1;
     next.lastDayKey = dayKey;
@@ -118,18 +127,59 @@ export function applyCheckIn(state: MachineState, will: Will | null, now: string
   return { state: next, events };
 }
 
-/** Witness vouch: stands the clock down, but does not count toward the owner's streak. */
-export function applyVouch(state: MachineState, witnessId: string, now: string): ResetResult {
+/**
+ * Witness vouch. Three rules, all of them there to stop one person holding a will hostage:
+ *   1. a witness may vouch once per silence episode (a repeat is recorded, not obeyed);
+ *   2. a quorum must agree before the clock stands down (default 1, settable per will);
+ *   3. witnesses may stand the clock down at most twice without the owner answering. After
+ *      that only the owner can reset it — a witness cannot keep a will alive forever.
+ */
+export function applyVouch(
+  state: MachineState,
+  witnessId: string,
+  now: string,
+  will: Will | null = null,
+): ResetResult {
   const events: Transition[] = [];
-  const next: MachineState = { ...state, grace: {} };
+  const next: MachineState = { ...state, grace: {}, vouchIds: [...(state.vouchIds ?? [])] };
   const from = next.phase;
-  if (from === 'CONCERNED' || from === 'PLEADING') {
+  const quorum = Math.max(1, will?.policy.vouchQuorum ?? 1);
+  const budget = 2;
+
+  if (next.vouchIds.includes(witnessId)) {
+    events.push({ kind: 'quorum', detail: { witnessId, from, counted: false, reason: 'already vouched in this episode' } });
+    return { state: next, events };
+  }
+  if ((next.vouchResets ?? 0) >= budget) {
+    events.push({
+      kind: 'quorum',
+      detail: { witnessId, from, counted: false, reason: 'vouch budget spent — only the owner can reset this clock now' },
+    });
+    return { state: next, events };
+  }
+
+  next.vouchIds.push(witnessId);
+  const counted = next.vouchIds.length;
+  events.push({ kind: 'quorum', detail: { witnessId, from, counted: true, counted_total: counted, needed: quorum } });
+
+  if (counted >= quorum && (from === 'CONCERNED' || from === 'PLEADING')) {
     next.phase = 'ARMED';
     next.investigated = false;
     next.lastCheckIn = now;
-    events.push({ kind: 'phase', detail: { from, to: 'ARMED', reason: 'witness vouch' } });
+    next.vouchIds = [];
+    next.vouchResets = (next.vouchResets ?? 0) + 1;
+    events.push({ kind: 'phase', detail: { from, to: 'ARMED', reason: 'witness quorum' } });
   }
-  events.push({ kind: 'vouch', detail: { witnessId, from, phase: next.phase } });
+  events.push({ kind: 'vouch', detail: { witnessId, from, phase: next.phase, quorum, counted } });
+  return { state: next, events };
+}
+
+/** Owner withdrawal. Terminal until a NEW version is signed; nothing executes. */
+export function applyRevoke(state: MachineState, reason = 'owner revoked', now = new Date().toISOString()): ResetResult {
+  const from = state.phase;
+  const next: MachineState = { ...state, phase: 'REVOKED', grace: {}, investigated: false, vouchIds: [], revokedAt: now };
+  const events: Transition[] = [{ kind: 'revoked', detail: { from, reason, at: now } }];
+  if (from !== 'REVOKED') events.unshift({ kind: 'phase', detail: { from, to: 'REVOKED', reason } });
   return { state: next, events };
 }
 
@@ -143,7 +193,10 @@ export function applyWillSigned(state: MachineState, will: Will, now: string): R
     grace: {},
     investigated: false,
     lastCheckIn: now,
+    vouchIds: [],
+    vouchResets: 0,
   };
+  delete next.revokedAt;
   events.push({ kind: 'will_signed', detail: { version: will.version, instructions: will.instructions.length, witnesses: will.witnesses.length } });
   return { state: next, events };
 }
@@ -161,7 +214,8 @@ export function toSnapshot(state: MachineState, will: Will | null): StateSnapsho
 
 /** Milliseconds until the next phase boundary, for the home page countdown. */
 export function msToNextBoundary(state: MachineState, will: Will | null, now: string): number | null {
-  if (!will || state.phase === 'DORMANT' || state.phase === 'EXECUTING' || state.phase === 'EXECUTED') return null;
+  if (!will || state.phase === 'DORMANT' || state.phase === 'EXECUTING' || state.phase === 'EXECUTED' || state.phase === 'REVOKED')
+    return null;
   const t = thresholds(will);
   const target =
     state.phase === 'ARMED' ? t.concerned : state.phase === 'CONCERNED' ? t.pleading : t.executing;
@@ -173,4 +227,4 @@ export function round(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-export const PHASE_ORDER: Phase[] = ['DORMANT', 'ARMED', 'CONCERNED', 'PLEADING', 'EXECUTING', 'EXECUTED'];
+export const PHASE_ORDER: Phase[] = ['DORMANT', 'ARMED', 'CONCERNED', 'PLEADING', 'EXECUTING', 'EXECUTED', 'REVOKED'];

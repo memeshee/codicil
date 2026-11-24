@@ -12,10 +12,12 @@ CREATE TABLE IF NOT EXISTS kv (
   value TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
-  id     INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  kind   TEXT NOT NULL,
-  detail TEXT NOT NULL DEFAULT '{}'
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  kind      TEXT NOT NULL,
+  detail    TEXT NOT NULL DEFAULT '{}',
+  prev_hash TEXT,
+  row_hash  TEXT
 );
 CREATE TABLE IF NOT EXISTS instructions (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +70,7 @@ export function initialState(now: string): MachineState {
     grace: {},
     willVersion: 0,
     investigated: false,
+    vouchIds: [],
   };
 }
 
@@ -78,6 +81,66 @@ export class Store {
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /**
+   * Additive migration + chain backfill. A database written before the chain existed still
+   * opens; its rows are chained from the first one forward, so the tamper-evidence starts
+   * with the oldest row we can still see. Any row deleted before the upgrade is undetectable
+   * — that is stated on /proof rather than hidden.
+   */
+  private migrate(): void {
+    const cols = this.db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+    const names = new Set(cols.map((c) => c.name));
+    if (!names.has('prev_hash')) this.db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT');
+    if (!names.has('row_hash')) this.db.exec('ALTER TABLE events ADD COLUMN row_hash TEXT');
+    const pending = this.db.prepare('SELECT COUNT(*) AS c FROM events WHERE row_hash IS NULL').get() as { c: number };
+    if (pending.c > 0) this.backfillChain();
+  }
+
+  private static chainHash(prev: string | null, ts: string, kind: string, detailJson: string): string {
+    return createHash('sha256').update(`${prev ?? 'genesis'}|${ts}|${kind}|${detailJson}`).digest('hex');
+  }
+
+  /** Chain every unchained row, in insert order. Idempotent. */
+  private backfillChain(): void {
+    const rows = this.db
+      .prepare('SELECT id, ts, kind, detail FROM events WHERE row_hash IS NULL ORDER BY id ASC')
+      .all() as Array<{ id: number; ts: string; kind: string; detail: string }>;
+    const head = this.db
+      .prepare('SELECT row_hash FROM events WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1')
+      .get() as { row_hash: string } | undefined;
+    let prev = head?.row_hash ?? null;
+    const upd = this.db.prepare('UPDATE events SET prev_hash = ?, row_hash = ? WHERE id = ?');
+    for (const r of rows) {
+      const rowHash = Store.chainHash(prev, r.ts, r.kind, r.detail);
+      upd.run(prev, rowHash, r.id);
+      prev = rowHash;
+    }
+  }
+
+  /** Walk the whole chain and recompute it. This is the tamper-evidence, not a promise. */
+  verifyChain(): { ok: boolean; checked: number; brokenAtId: number | null; head: string | null } {
+    const rows = this.db
+      .prepare('SELECT id, ts, kind, detail, prev_hash, row_hash FROM events ORDER BY id ASC')
+      .all() as Array<{ id: number; ts: string; kind: string; detail: string; prev_hash: string | null; row_hash: string | null }>;
+    let prev: string | null = null;
+    for (const r of rows) {
+      const expected = Store.chainHash(prev, r.ts, r.kind, r.detail);
+      if (r.row_hash !== expected || r.prev_hash !== prev) {
+        return { ok: false, checked: rows.length, brokenAtId: r.id, head: prev };
+      }
+      prev = r.row_hash;
+    }
+    return { ok: true, checked: rows.length, brokenAtId: null, head: prev };
+  }
+
+  /** Rows as they are stored, for the public verifier. */
+  listChain(): Array<{ id: number; ts: string; kind: string; detail: string; prevHash: string | null; rowHash: string | null }> {
+    return this.db
+      .prepare('SELECT id, ts, kind, detail, prev_hash AS prevHash, row_hash AS rowHash FROM events ORDER BY id ASC')
+      .all() as Array<{ id: number; ts: string; kind: string; detail: string; prevHash: string | null; rowHash: string | null }>;
   }
 
   close(): void {
@@ -97,7 +160,12 @@ export class Store {
   }
 
   getState(now = new Date().toISOString()): MachineState {
-    return this.getKV<MachineState>('state') ?? initialState(now);
+    const stored = this.getKV<MachineState>('state');
+    if (!stored) return initialState(now);
+    // Older rows predate these fields; default them rather than trusting the shape.
+    if (!Array.isArray(stored.vouchIds)) stored.vouchIds = [];
+    if (stored.revokedAt === undefined) delete stored.revokedAt;
+    return stored;
   }
 
   setState(s: MachineState): void {
@@ -131,18 +199,31 @@ export class Store {
 
   // --- append-only events --------------------------------------------------
   appendEvent(kind: EventKind, detail: Record<string, unknown> = {}, ts?: string): void {
-    if (ts) {
-      this.db.prepare('INSERT INTO events (ts, kind, detail) VALUES (?, ?, ?)').run(ts, kind, JSON.stringify(detail));
-      return;
-    }
-    this.db.prepare('INSERT INTO events (kind, detail) VALUES (?, ?)').run(kind, JSON.stringify(detail));
+    const at = ts ?? new Date().toISOString();
+    const detailJson = JSON.stringify(detail);
+    const head = this.db.prepare('SELECT row_hash FROM events ORDER BY id DESC LIMIT 1').get() as
+      | { row_hash: string | null }
+      | undefined;
+    const prev = head?.row_hash ?? null;
+    const rowHash = Store.chainHash(prev, at, kind, detailJson);
+    this.db
+      .prepare('INSERT INTO events (ts, kind, detail, prev_hash, row_hash) VALUES (?, ?, ?, ?, ?)')
+      .run(at, kind, detailJson, prev, rowHash);
   }
 
   listEvents(limit = 200): Event[] {
     const rows = this.db
-      .prepare('SELECT ts, kind, detail FROM events ORDER BY id DESC LIMIT ?')
-      .all(limit) as Array<{ ts: string; kind: string; detail: string }>;
-    return rows.reverse().map((r) => ({ ts: r.ts, kind: r.kind as EventKind, detail: JSON.parse(r.detail) }));
+      .prepare('SELECT ts, kind, detail, prev_hash, row_hash FROM events ORDER BY id DESC LIMIT ?')
+      .all(limit) as Array<{ ts: string; kind: string; detail: string; prev_hash: string | null; row_hash: string | null }>;
+    return rows
+      .reverse()
+      .map((r) => ({
+        ts: r.ts,
+        kind: r.kind as EventKind,
+        detail: JSON.parse(r.detail),
+        prevHash: r.prev_hash,
+        rowHash: r.row_hash,
+      }));
   }
 
   countEvents(kind: EventKind): number {

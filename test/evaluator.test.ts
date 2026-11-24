@@ -85,7 +85,9 @@ test('a witness vouch stands the clock down without advancing the owner streak',
   const r = applyVouch(pleading, 'abc123', at(100));
   assert.equal(r.state.phase, 'ARMED');
   assert.equal(r.state.streakDays, 0);
-  assert.equal(r.events[0]?.kind, 'phase');
+  // The vouch is counted first (quorum accounting), then the phase moves.
+  assert.equal(r.events[0]?.kind, 'quorum');
+  assert.ok(r.events.some((e) => e.kind === 'phase' && e.detail.to === 'ARMED'));
   assert.equal(r.events.at(-1)?.kind, 'vouch');
 });
 

@@ -8,9 +8,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { Store, hashToken, newToken, tokenMatches, utcDayKey } from './state.ts';
-import { applyCheckIn, applyVouch, applyWillSigned, msToNextBoundary, toSnapshot } from './evaluator.ts';
+import { applyCheckIn, applyRevoke, applyVouch, applyWillSigned, msToNextBoundary, toSnapshot } from './evaluator.ts';
 import { onWake, recordTick } from './wake.ts';
-import { executeWill, sendNudge } from './executor.ts';
+import { executeWill, notifyWitnesses, sendNudge } from './executor.ts';
+import { investigate } from './mind.ts';
 import { GATEWAY, listConnectors, type ConnectorInfo } from './connectors.ts';
 import { noticeBoard } from './ledger.ts';
 import type { Instruction, Will, WitnessSpec } from './types.ts';
@@ -19,6 +20,9 @@ import { renderWill } from './pages/will.ts';
 import { renderWitness } from './pages/witness.ts';
 import { renderLedger } from './pages/ledger.ts';
 import { renderProof } from './pages/proof.ts';
+import { renderTry } from './pages/try.ts';
+import { renderOpen } from './pages/open.ts';
+import { renderVerify } from './pages/verify.ts';
 import { shell } from './pages/layout.ts';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -138,11 +142,22 @@ function buildWill(form: Record<string, string>, previous: Will | null, now: str
   const minGrace = DEMO ? 0.05 : 1;
   if (!Number.isFinite(deadline) || deadline < minGrace) throw new Error(`deadline must be at least ${minGrace} minute(s)`);
 
+  // Witness syntax: "Ada", "Ada <U0123ABCD>", "Grace <grace@example.com>".
+  // A witness with no channel can still vouch from their link — but they cannot be *told*,
+  // and the ledger will say so instead of pretending.
   const witnesses = (form.witnesses ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((name) => ({ name }) as WitnessSpec);
+    .map((s) => {
+      const m = s.match(/^(.+?)\s*<([^>]+)>$/);
+      if (!m) return { name: s } as WitnessSpec;
+      const name = m[1]!.trim();
+      const channel = m[2]!.trim();
+      return (channel.includes('@')
+        ? { name, email: channel }
+        : { name, slackUserId: channel }) as WitnessSpec;
+    });
 
   const instructions: Instruction[] = [];
   const letter = (form.letter ?? previous?.letter ?? '').trim();
@@ -160,11 +175,32 @@ function buildWill(form: Record<string, string>, previous: Will | null, now: str
     instructions.push({ kind: 'slack_post', target: form.slack.trim(), text: '' });
   }
 
+  // The sealed blob arrives already encrypted by the browser. We never see a passphrase;
+  // if the client could not encrypt (no JS), we refuse rather than store plaintext silently.
+  let sealed: Will['sealed'] | undefined = previous?.sealed;
+  if (form.sealed_blob !== undefined) {
+    const raw = form.sealed_blob.trim();
+    if (raw) {
+      try {
+        const b = JSON.parse(raw) as { ct?: string; iv?: string; salt?: string; hint?: string };
+        if (!b.ct || !b.iv || !b.salt) throw new Error('incomplete blob');
+        sealed = { ct: b.ct, iv: b.iv, salt: b.salt, ...(b.hint ? { hint: b.hint } : {}) };
+      } catch {
+        throw new Error('the sealed letter was malformed — seal it in the browser, not by hand');
+      }
+    } else {
+      sealed = undefined;
+    }
+  }
+
+  const vouchQuorum = Math.max(1, Math.min(5, Number(form.quorum ?? previous?.policy.vouchQuorum ?? 1) || 1));
+
   const will: Will = {
     version: (previous?.version ?? 0) + 1,
     owner: { name: form.name?.trim() || previous?.owner.name || 'the owner', github: form.github?.trim() || previous?.owner.github || '' },
     letter,
-    policy: { deadlineMinutes: deadline, nudgeGraceMinutes: nudge, pleadGraceMinutes: plead },
+    policy: { deadlineMinutes: deadline, nudgeGraceMinutes: nudge, pleadGraceMinutes: plead, vouchQuorum },
+    ...(sealed ? { sealed } : {}),
     instructions: instructions.length ? instructions : (previous?.instructions ?? []),
     witnesses,
     createdAt: previous?.createdAt ?? now,
@@ -198,6 +234,25 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       console.log(`[nudge] slack ${nudge.ok ? 'sent' : 'failed'}${nudge.ref ? ` ref=${nudge.ref}` : ''}${nudge.note ? ` (${nudge.note})` : ''}`);
     } else {
       store.appendEvent('execute_fail', { kind: 'nudge', reason: 'no channel configured' }, now);
+    }
+  }
+
+  // PLEADING: the witnesses have to be TOLD. This is the beat the product's whole human
+  // ladder rests on, and until now nothing was ever sent.
+  if (wake.transitions.some((t) => t.kind === 'witness_notified')) {
+    const will = store.getWill();
+    if (will) {
+      const mind = { connectors: await connectors(), provider: LLM_PROVIDER, model: LLM_MODEL };
+      const inv = await investigate(will, mind);
+      store.setKVPublic('briefing', {
+        at: now,
+        summary: inv.summary,
+        narrative: inv.narrative,
+        briefing: inv.briefing,
+      });
+      store.appendEvent('investigate', { source: inv.source, summary: inv.summary, ...inv.detail }, now);
+      const told = await notifyWitnesses({ store, connectors: await connectors(), now }, will, inv.briefing);
+      console.log(`[witnesses] sent=${told.sent} unreachable=${told.unreachable.join(',') || 'none'}`);
     }
   }
 
@@ -256,6 +311,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         lastTickAgeSeconds,
         demo: DEMO,
         receipts: s.phase === 'EXECUTED' ? store.listInstructions() : [],
+        canTry: DEMO,
+        revokedAt: s.revokedAt ?? null,
         wakeSources: [
           'your own check-in, and any witness opening their notice — both are inbound requests',
           'a scheduled GitHub Action calling POST /tick every 30 minutes',
@@ -288,15 +345,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         phase: store.getState(now).phase,
         gateway: GATEWAY,
         demo: DEMO,
+        chain: store.verifyChain(),
+        sealed: Boolean(store.getWill()?.sealed),
       }),
     );
     return;
   }
 
   // --- witness routes -------------------------------------------------------
-  const witnessMatch = path.match(/^\/w\/([a-f0-9]+)\/([A-Za-z0-9_-]+)(\/vouch)?$/);
+  const witnessMatch = path.match(/^\/w\/([a-f0-9]+)\/([A-Za-z0-9_-]+)(\/(vouch|unknown))?$/);
   if (witnessMatch) {
     const [, wid, token, vouch] = witnessMatch;
+    const action = witnessMatch[4] ?? null;
     const witness = store.getWitness(wid!);
     if (!witness || !tokenMatches(token!, witness.tokenHash)) {
       send(res, 404, shell({ title: 'Codicil — not found' }, '<section class="card"><h1>This link is not valid.</h1><p class="muted">Witness notices are private to one person.</p></section>'));
@@ -307,12 +367,99 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         send(res, 405, 'method not allowed', 'text/plain');
         return;
       }
-      store.markWitnessVouched(wid!);
-      const r = applyVouch(store.getState(now), wid!, now);
-      store.setState(r.state);
-      r.events.forEach((e) => store.appendEvent(e.kind, e.detail, now));
+      if (action === 'unknown') {
+        // "I don't know" is an answer, and it is recorded as one — it just does not reset
+        // anything. Silence and uncertainty are not consent.
+        store.appendEvent('quorum', { witnessId: wid, answer: 'unknown', counted: false }, now);
+      } else {
+        store.markWitnessVouched(wid!);
+        const r = applyVouch(store.getState(now), wid!, now, store.getWill());
+        store.setState(r.state);
+        r.events.forEach((e) => store.appendEvent(e.kind, e.detail, now));
+      }
     }
-    send(res, 200, renderWitness({ witness, will: store.getWill(), snapshot: toSnapshot(store.getState(now), store.getWill()), demo: DEMO, vouched: Boolean(witness.vouchedAt) || Boolean(vouch && method === 'POST'), lastCheckIn: store.getState(now).lastCheckIn }));
+    send(
+      res,
+      200,
+      renderWitness({
+        witness,
+        will: store.getWill(),
+        snapshot: toSnapshot(store.getState(now), store.getWill()),
+        demo: DEMO,
+        vouched: Boolean(witness.vouchedAt) || Boolean(vouch && method === 'POST' && action !== 'unknown'),
+        lastCheckIn: store.getState(now).lastCheckIn,
+        briefing: store.getKVPublic<{ briefing?: { checked: string[]; couldNotVerify: string[]; suggest: string[] }; narrative?: string }>('briefing') ?? null,
+        quorum: store.getWill()?.policy.vouchQuorum ?? 1,
+        counted: store.getState(now).vouchIds?.length ?? 0,
+      }),
+    );
+    return;
+  }
+
+  // --- trust routes ---------------------------------------------------------
+
+  if (method === 'GET' && path === '/verify.json') {
+    sendJson(res, 200, { chain: store.verifyChain(), rows: store.listChain() });
+    return;
+  }
+  if (method === 'GET' && path === '/verify') {
+    send(res, 200, renderVerify({ chain: store.verifyChain(), demo: DEMO, count: store.listChain().length }));
+    return;
+  }
+  if (method === 'GET' && path === '/open') {
+    send(res, 200, renderOpen({ will: store.getWill(), demo: DEMO }));
+    return;
+  }
+  if (DEMO && method === 'GET' && path === '/try') {
+    const will = store.getWill();
+    send(
+      res,
+      200,
+      renderTry({
+        will,
+        snapshot: toSnapshot(store.getState(now), will),
+        msToNextBoundary: msToNextBoundary(store.getState(now), will, now),
+        demoToken: store.getKVPublic<string>('demoToken') ?? '',
+        repo: process.env.DEMO_REPO ?? '',
+        channel: process.env.DEMO_SLACK ?? '',
+        demo: true,
+      }),
+    );
+    return;
+  }
+  if (DEMO && method === 'POST' && path === '/try') {
+    // A spectator may drive the whole ladder without an owner token: this is a disposable
+    // instance, and the will it signs is this instance's will, labelled DEMO everywhere.
+    if (rateLimited(`try:${clientKey(req)}`, 4, 60_000)) {
+      sendJson(res, 429, { ok: false, error: 'slow down a moment' });
+      return;
+    }
+    const form = parseBody(await readBody(req), String(req.headers['content-type'] ?? ''));
+    const demoToken = new (await import('node:crypto')).randomBytes(12).toString('base64url') as string;
+    form.token = demoToken;
+    form.deadline = form.deadline || '0.34';
+    form.nudge = form.nudge || '0.34';
+    form.plead = form.plead || '0.34';
+    form.name = form.name || 'a visitor';
+    form.letter = form.letter || 'This is a demo will, signed by a visitor to the demo instance.';
+    if (process.env.DEMO_REPO) form.repo = process.env.DEMO_REPO;
+    if (process.env.DEMO_SLACK) form.slack = process.env.DEMO_SLACK;
+    store.setKVPublic('demoToken', demoToken);
+    const previous = store.getWill();
+    try {
+      const { will, witnesses } = buildWill(form, previous, now);
+      const created = store.replaceWitnesses(witnesses);
+      store.replaceInstructions(will.instructions);
+      store.setWill(will);
+      const r = applyWillSigned(store.getState(now), will, now);
+      store.setState(r.state);
+      r.events.forEach((e) => store.appendEvent(e.kind, { ...e.detail, demo: true }, now));
+      const host = `http://${req.headers.host ?? 'localhost'}`;
+      const links = created.map((c) => ({ name: c.row.name, url: `${host}/w/${c.row.id}/${c.token}` }));
+      sendJson(res, 200, { ok: true, demoToken, phase: r.state.phase, witnesses: links, ladderMinutes: will.policy });
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
     return;
   }
 
@@ -323,7 +470,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return;
     }
     const form = parseBody(await readBody(req), String(req.headers['content-type'] ?? ''));
-    if (!tokenMatches(form.token ?? '', store.getOwnerTokenHash())) {
+    const demoToken = DEMO ? store.getKVPublic<string>('demoToken') : null;
+    const okOwner = tokenMatches(form.token ?? '', store.getOwnerTokenHash());
+    const okDemo = Boolean(demoToken && form.token === demoToken);
+    if (!okOwner && !okDemo) {
       sendJson(res, 403, { ok: false, error: 'bad owner token' });
       return;
     }
@@ -332,6 +482,39 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     r.events.forEach((e) => store.appendEvent(e.kind, e.detail, now));
     if (String(req.headers['accept'] ?? '').includes('text/html')) redirect(res, '/');
     else sendJson(res, 200, { ok: true, phase: r.state.phase, streakDays: r.state.streakDays });
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/revoke') {
+    const form = parseBody(await readBody(req), String(req.headers['content-type'] ?? ''));
+    if (!tokenMatches(form.token ?? '', store.getOwnerTokenHash())) {
+      sendJson(res, 403, { ok: false, error: 'bad owner token' });
+      return;
+    }
+    const r = applyRevoke(store.getState(now), form.reason?.trim() || 'owner withdrew consent', now);
+    store.setState(r.state);
+    r.events.forEach((e) => store.appendEvent(e.kind, e.detail, now));
+    sendJson(res, 200, {
+      ok: true,
+      phase: r.state.phase,
+      note: 'nothing will execute for this version. Signing a new version re-arms it.',
+    });
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/rotate') {
+    const form = parseBody(await readBody(req), String(req.headers['content-type'] ?? ''));
+    if (!tokenMatches(form.token ?? '', store.getOwnerTokenHash())) {
+      sendJson(res, 403, { ok: false, error: 'bad owner token' });
+      return;
+    }
+    const fresh = newToken();
+    store.setOwnerTokenHash(hashToken(fresh));
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(ownerTokenPath(), fresh + '\n', { mode: 0o600 });
+    chmodSync(ownerTokenPath(), 0o600);
+    store.appendEvent('token_rotated', { at: now, note: 'previous token invalid immediately' }, now);
+    sendJson(res, 200, { ok: true, token: fresh, note: 'the old token no longer checks in. Store this one.' });
     return;
   }
 

@@ -12,6 +12,9 @@ export interface HomeView {
   wakeSources: string[];
   /** Populated only when phase is EXECUTED: the owner's return page. */
   receipts?: ExecRecord[];
+  /** Demo instances open the spectator door. */
+  canTry?: boolean;
+  revokedAt?: string | null;
 }
 
 const PHASE_COPY: Record<StateSnapshot['phase'], string> = {
@@ -21,6 +24,7 @@ const PHASE_COPY: Record<StateSnapshot['phase'], string> = {
   PLEADING: 'Still silent. Your witnesses have been written to.',
   EXECUTING: 'Carrying out your instructions now.',
   EXECUTED: 'Done. Everything below is receipts.',
+  REVOKED: 'You withdrew consent. Nothing will execute until you sign a new version.',
 };
 
 function humanMs(ms: number): string {
@@ -66,8 +70,29 @@ export function renderHome(v: HomeView): string {
 </section>`
       : '';
 
+  const revoked = s.phase === 'REVOKED'
+    ? `<section class="card wake">
+  <p class="kicker">revoked ${escapeHtml(v.revokedAt ?? '')}</p>
+  <h1>Nothing will be carried out.</h1>
+  <p>You withdrew the will. The revocation is on the board, the clock is stopped, and an
+  execution that was already running would have finished — which is why the revocation is
+  recorded with its timestamp rather than erasing anything.</p>
+  <p class="muted small">Signing a new version re-arms from scratch.</p>
+</section>`
+    : '';
+
+  const tryCard = v.canTry
+    ? `<section class="card">
+  <p class="kicker">no token needed</p>
+  <h1>Watch it run in 60 seconds.</h1>
+  <p>This instance is a demo. Seal a throwaway will on <a href="/try">/try</a> and the ladder walks
+  itself: declared silence, nudge, witnesses, execution, receipts. Every row is labelled
+  <code>DEMO</code>.</p>
+</section>`
+    : '';
+
   const body = `
-${returnPage}
+${returnPage}${revoked}${tryCard}
 <section class="hero">
   <p class="kicker">phase</p>
   <h1>${s.phase}</h1>

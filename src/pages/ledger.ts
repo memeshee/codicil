@@ -30,6 +30,7 @@ export function renderLedger(v: LedgerView): string {
   page is a letter body: the words stay between the owner and the people they wrote them for.</p>
   <ol class="board">${rows}</ol>
 </section>
-<p class="muted small">Written by the executor itself. There is no delete or edit path in the codebase.</p>`;
+<p class="muted small">Written by the executor itself. There is no delete or edit path in the codebase,
+and every row is chained to the one before it — <a href="/verify">verify the chain in your browser</a>.</p>`;
   return shell({ title: 'Codicil — public notice board', active: 'ledger', demo: v.demo }, body);
 }

@@ -4,7 +4,7 @@
 // the rest, every outcome lands on the public notice board with its receipt, and there is no
 // re-arming loop — EXECUTED is terminal for that will version.
 
-import type { Instruction } from './types.ts';
+import type { Briefing, Instruction, Will } from './types.ts';
 import { githubCreateIssue, slackPostMessage, type ConnectorInfo } from './connectors.ts';
 import { composeLetter, investigate, type MindContext } from './mind.ts';
 import type { Store } from './state.ts';
@@ -25,6 +25,88 @@ export interface ExecOutcome {
 
 const LOCK_KEY = 'executionLock';
 const LOCK_TTL_MS = 15 * 60_000;
+
+/**
+ * The sealed block that rides with every delivery. The executor has never seen the
+ * passphrase, so this is the honest thing it can say about words it is carrying.
+ */
+export function sealedBlock(will: Will): string {
+  if (!will.sealed) return '';
+  const { ct, iv, salt, hint } = will.sealed;
+  return [
+    '',
+    '---',
+    'SEALED — this executor cannot read this.',
+    'It is ciphertext. The passphrase was never sent to the machine carrying it.',
+    hint ? `Hint from the owner: ${hint}` : '',
+    '',
+    `blob: ${ct}`,
+    `iv: ${iv}`,
+    `salt: ${salt}`,
+    '',
+    'Open it at /open on the executor, or with any AES-GCM/PBKDF2 tool. Only the holder of',
+    'the passphrase can read it — including after the executor is gone.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * Tell the witnesses. A witness without a reachable channel is not notified, and this
+ * says so in the ledger rather than claiming otherwise.
+ */
+export async function notifyWitnesses(
+  deps: Pick<ExecDeps, 'store' | 'connectors' | 'now'>,
+  will: Will,
+  briefing: Briefing,
+  links?: Array<{ id: string; name: string; url: string }>,
+): Promise<{ sent: number; unreachable: string[] }> {
+  const { store, connectors, now } = deps;
+  const sl = connectorFor(connectors, 'slack');
+  const sent: string[] = [];
+  const unreachable: string[] = [];
+
+  for (const w of store.listWitnesses()) {
+    const link = links?.find((l) => l.id === w.id)?.url;
+    const text = [
+      `${will.owner.name} has gone quiet past their own deadline. You are named in their will.`,
+      '',
+      briefing.checked.length ? `Checked: ${briefing.checked.join('; ')}` : '',
+      briefing.couldNotVerify.length ? `Could not check: ${briefing.couldNotVerify.join('; ')}` : '',
+      briefing.suggest.length ? `What you can do: ${briefing.suggest.join('; ')}` : '',
+      '',
+      link
+        ? `Your private notice (the only copy of this link): ${link}`
+        : 'Your private notice is the link you were given when the will was signed.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    if (sl && w.slackUserId) {
+      const res = await attempt(() => slackPostMessage(sl.id, w.slackUserId!, text));
+      if (res.ok) {
+        store.markWitnessNotified(w.id);
+        store.appendEvent('witness_delivered', { witness: w.id, via: 'slack', ref: refFrom(res.body) }, now);
+        sent.push(w.name);
+        continue;
+      }
+      store.appendEvent('witness_delivered', { witness: w.id, via: 'slack', ok: false, reason: `slack ${res.status}` }, now);
+      unreachable.push(w.name);
+      continue;
+    }
+    store.appendEvent(
+      'witness_delivered',
+      {
+        witness: w.id,
+        ok: false,
+        reason: !w.slackUserId ? 'no channel on file for this witness' : 'no slack connector granted',
+      },
+      now,
+    );
+    unreachable.push(w.name);
+  }
+  return { sent: sent.length, unreachable };
+}
 
 /** Every meaningful step is printed, because the demo shows this log on screen. */
 function log(line: string): void {
@@ -107,6 +189,8 @@ export async function executeWill(deps: ExecDeps): Promise<ExecOutcome> {
   outcome.letterUsedModel = letter.usedModel;
   store.appendEvent('letter_composed', { usedModel: letter.usedModel, chars: letter.text.length }, now);
   log(`letter composed (${letter.usedModel ? 'model' : 'template'}, ${letter.text.length} chars)`);
+  const sealed = sealedBlock(will);
+  if (sealed) store.appendEvent('sealed_attached', { bytes: will.sealed?.ct.length ?? 0, readByExecutor: false }, now);
 
   // 3. Run the instructions in ordinal order.
   const rows = store.listInstructions().filter((r) => r.status === 'pending');
@@ -116,7 +200,9 @@ export async function executeWill(deps: ExecDeps): Promise<ExecOutcome> {
       if (op.kind === 'github_issue') {
         const gh = connectorFor(connectors, 'github');
         if (!gh) throw new Error('no github connector granted');
-        const res = await attempt(() => githubCreateIssue(gh.id, op.repo, op.title, `${op.body}\n\n---\n\n${letter.text}`));
+        const res = await attempt(() =>
+          githubCreateIssue(gh.id, op.repo, op.title, `${op.body}\n\n---\n\n${letter.text}${sealed}`),
+        );
         if (!res.ok) throw new Error(`github ${res.status} ${res.text.slice(0, 160)}`);
         const ref = refFrom(res.body);
         store.markInstruction(row.id, 'ok', ref);
@@ -127,7 +213,7 @@ export async function executeWill(deps: ExecDeps): Promise<ExecOutcome> {
       } else if (op.kind === 'slack_post') {
         const sl = connectorFor(connectors, 'slack');
         if (!sl) throw new Error('no slack connector granted');
-        const res = await attempt(() => slackPostMessage(sl.id, op.target, `${letter.text}\n\n${op.text}`.trim()));
+        const res = await attempt(() => slackPostMessage(sl.id, op.target, `${letter.text}\n\n${op.text}${sealed}`.trim()));
         if (!res.ok) throw new Error(`slack ${res.status} ${res.text.slice(0, 160)}`);
         const ref = refFrom(res.body);
         store.markInstruction(row.id, 'ok', ref);
