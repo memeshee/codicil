@@ -99,6 +99,80 @@ Established from Fly's documentation before any product code was written. Notes 
 - **Inbound is one always-on HTTPS URL** per Sprite (`https://<name>-<org>.sprites.app/`),
   private by default; `--url-auth public` opens it.
 
+## Sponsor integration — where the code is
+
+The claim is "this executor never holds a key". These are the lines that make it true or false,
+so a judge does not have to take the README's word for it. Line numbers are as of this commit;
+function names are stable if they drift.
+
+- **No credential in the box, ever** — the deliberate absence of an `Authorization` header at
+  `src/connectors.ts:28`, with the reason above `gatewayCall()` at `src/connectors.ts:32`;
+  gateway base at `src/connectors.ts:8`.
+- **Connector discovery + granted scopes** — `listConnectors()` `src/connectors.ts:63`.
+- **The two real writes** — `githubCreateIssue()` `src/connectors.ts:118`,
+  `slackPostMessage()` `src/connectors.ts:126`.
+- **The model beat** — `llmChat()` `src/connectors.ts:138`, with a template fallback that needs
+  no model at all.
+- **The nudge** — `sendNudge()` `src/executor.ts:60`; **execution, retry and receipts** —
+  `executeWill()` `src/executor.ts:84`; idempotency lock at `src/executor.ts:27`.
+- **The wake path** — management socket `src/wake.ts:35`, task hold `hold()` `src/wake.ts:52`,
+  evaluator-on-every-request `onWake()` `src/wake.ts:68`.
+- **The state machine** — `evaluate()` `src/evaluator.ts:46`, owner reset `applyCheckIn()`
+  `src/evaluator.ts:94`, witness reset `applyVouch()` `src/evaluator.ts:122`, re-arm
+  `applyWillSigned()` `src/evaluator.ts:137`.
+- **Append-only ledger and token handling** — events table `src/state.ts:14`,
+  `hashToken()` `src/state.ts:44`, constant-time `tokenMatches()` `src/state.ts:49`.
+- **Routes** — `/tick` `src/server.ts:234`, `/proof` `src/server.ts:280`,
+  `/api/checkin` `src/server.ts:320`, witness links rendered once `src/server.ts:355`.
+
+Path scoping is set at consent time in the Fly dashboard, not in this repository: GitHub
+allowlisted to the owner's own paths, Slack to `chat.postMessage` only — and Fly's connectors
+refuse every Sprite until a policy grants access, which is what deny-by-default means here.
+
+## Economics (why long custody is plausible at all)
+
+Published Sprites rates (fact: fly.io/sprites/): CPU $0.0385/vCPU-hour and RAM $0.021875/GB-hour
+**while active**, storage ≈ $0.50/GB-month and TRIM-billed, and **compute is unbilled while a
+Sprite is paused**. A will is a few kilobytes and a sleeping Sprite costs nothing but its
+storage, so a will idle 99.9% of the year costs pennies — which is the whole reason an executor
+can plausibly outlive its owner's attention span. What this entry cannot promise is twenty years
+of custody; it demonstrates the architecture and the economics that make such a promise credible.
+
+## Security model
+
+- **No provider credential is ever present.** It lives encrypted at the organisation level and is
+  injected at the gateway per call.
+- **Owner and witness tokens** are random, stored only as SHA-256 hashes, and compared in
+  constant time (`src/state.ts:44`, `src/state.ts:49`). Witness links are rendered once at
+  sealing and cannot be reconstructed afterwards; losing one means re-signing the will.
+- **The URL is public by necessity** — you must be able to check in from anywhere. The
+  compensating control is route-level tokens: everything that mutates state requires one.
+- **The ledger is append-only**, with no update or delete path in the codebase.
+- **No third-party send paths exist.** The only destinations are the owner's own connected
+  accounts, and the only contact with another person is a witness notice the owner configured.
+- **No money moves.** Payments are deliberately out of scope: a per-purchase approval cannot be
+  given by someone who is gone, so the product does not pretend to spend.
+
+## Built at the event, what was reused, and AI assistance
+
+- **Built inside the window.** The repository opens at commit `be28ddf` (Nov 24, inside the
+  Hacksgiving week) and every source file was written after it. `discovery/` holds the research
+  record, kept deliberately rather than squashed.
+- **Reused:** the Node standard library and `node:sqlite` — zero third-party runtime
+  dependencies — plus Fly's Sprites platform and connector gateway. No prior project was ported;
+  this is net-new code.
+- **AI assistance, stated plainly:** the build was driven by Hermes Agent, which ran the
+  discovery research, wrote the spec and the executor plan, and wrote the implementation. The
+  check on that is not a claim but the suite: 25 tests covering every transition, the reset
+  rules, token handling, the no-`Authorization`-header property and retry bounds, plus the demo
+  run whose transcript ships with the entry.
+
+## Status
+
+Core loop green locally — 25/25 tests and a full `ARMED → EXECUTED` walk verified. Deployment to
+a Sprite is the remaining step; the live link at the top is added the moment it exists, and not
+before.
+
 ## Licence
 
 MIT
