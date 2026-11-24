@@ -61,7 +61,7 @@ run sprite config update --url-auth public -s "$SPRITE"
 
 URL=""
 if [ "$APPLY" = 1 ]; then
-  URL=$(sprite info -s "$SPRITE" 2>/dev/null | grep -oE 'https://[a-z0-9-]+\.sprites\.app/?' | head -1 || true)
+  URL=$(sprite info -s "$SPRITE" 2>/dev/null | grep -E '^URL:' | awk '{print $2}' | head -1 || true)
 fi
 echo "   public URL: ${URL:-<printed by sprite info after creation>}"
 
@@ -76,32 +76,20 @@ echo "   remote home: $REMOTE_HOME"
 run sprite file push -r -p . "$SPRITE:$REMOTE_HOME/codicil"
 
 # ---------------------------------------------------------------- run as a service
-say "4/6 installing a systemd unit so a cold wake comes back up"
-UNIT="/tmp/codicil.service"
-cat > "$UNIT" <<EOF
-[Unit]
-Description=Codicil executor
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=$REMOTE_HOME/codicil
-Environment=PORT=8080
-Environment=DATA_DIR=$REMOTE_HOME/codicil/data
-Environment=NODE_ENV=production
-ExecStart=$(command -v node || echo /usr/bin/node) --experimental-sqlite --experimental-strip-types src/server.ts
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-EOF
+# PID 1 on a Sprite is tini, not systemd: a systemd unit would install cleanly and never run.
+# The platform's own supervision is `sprite-env services`, which restarts on crash and starts in
+# dependency order on a cold boot. Only one service may hold the HTTP port.
+say "4/6 creating the service that holds the HTTP port"
+NODE_BIN="/.sprite/bin/node"
 if [ "$APPLY" = 1 ]; then
-  sprite exec -s "$SPRITE" --file "$UNIT:/tmp/codicil.service" -- bash -lc \
-    'sudo mv /tmp/codicil.service /etc/systemd/system/codicil.service && sudo systemctl daemon-reload && sudo systemctl enable --now codicil.service && systemctl is-active codicil.service'
+  NODE_BIN=$(sprite exec -s "$SPRITE" --no-stdin -- bash -lc 'command -v node' 2>/dev/null | grep -v bind | tr -d '\r' | tail -1)
+fi
+echo "   node: $NODE_BIN"
+SERVICE_CMD="sprite-env services create codicil --cmd $NODE_BIN --args --experimental-sqlite,--experimental-strip-types,src/server.ts --env PORT=8080,DATA_DIR=$REMOTE_HOME/codicil/data,DEMO=1,NODE_ENV=production --dir $REMOTE_HOME/codicil --http-port 8080 --no-stream"
+if [ "$APPLY" = 1 ]; then
+  sprite exec -s "$SPRITE" --no-stdin -- bash -lc "$SERVICE_CMD && sleep 2 && sprite-env services list" 2>&1 | grep -v bind | tail -3
 else
-  echo "  would install $UNIT and: systemctl enable --now codicil.service"
+  echo "  would exec: $SERVICE_CMD"
 fi
 
 # ---------------------------------------------------------------- prove it
