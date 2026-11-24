@@ -1,4 +1,4 @@
-// src/pages/will.ts — GET /will. The document itself, plus the owner-token edit form.
+// src/pages/will.ts - GET /will. The document itself, plus the owner-token edit form.
 
 import type { Will } from '../types.ts';
 import { escapeHtml, shell } from './layout.ts';
@@ -19,23 +19,23 @@ export function renderWill(v: WillView): string {
 <ol class="ops">
   ${w.instructions
     .map((op) => {
-      if (op.kind === 'github_issue') return `<li><b>farewell issue</b> on <code>${escapeHtml(op.repo)}</code> — “${escapeHtml(op.title)}”</li>`;
+      if (op.kind === 'github_issue') return `<li><b>farewell issue</b> on <code>${escapeHtml(op.repo)}</code> - “${escapeHtml(op.title)}”</li>`;
       if (op.kind === 'slack_post') return `<li><b>message</b> to <code>${escapeHtml(op.target)}</code></li>`;
       if (op.kind === 's3_put') return `<li><b>release file</b> <code>${escapeHtml(op.key)}</code></li>`;
-      return `<li><b>email</b> to <code>${escapeHtml(op.to)}</code> — “${escapeHtml(op.subject)}”</li>`;
+      return `<li><b>email</b> to <code>${escapeHtml(op.to)}</code> - “${escapeHtml(op.subject)}”</li>`;
     })
     .join('')}
 </ol>
 <h3>Witnesses</h3>
 <ul class="plain">${w.witnesses.map((x) => `<li>${escapeHtml(x.name)}</li>`).join('')}</ul>
 ${w.sealed ? `<h3>Sealed</h3><p>A private letter rode along with this will as ciphertext
-(${w.sealed.ct.length} bytes). The executor has never seen the passphrase and cannot open it —
+(${w.sealed.ct.length} bytes). The executor has never seen the passphrase and cannot open it -
 <a href="/open">open it in your browser</a>.</p>` : ''}
-<p class="muted">version ${w.version} · signed ${escapeHtml(w.updatedAt)}${w.policy.vouchQuorum ? ` · quorum ${w.policy.vouchQuorum}` : ''}</p>`
+<p class="muted">version ${w.version} / signed ${escapeHtml(w.updatedAt)}${w.policy.vouchQuorum ? ` / quorum ${w.policy.vouchQuorum}` : ''}</p>`
     : `<p class="muted">No will signed yet. Nothing is armed, and nothing will be executed.</p>`;
 
   const links = v.witnessLinks?.length
-    ? `<div class="card"><p class="kicker">witness links — private, share once</p><ul class="plain">${v.witnessLinks
+    ? `<div class="card"><p class="kicker">witness links - private, share once</p><ul class="plain">${v.witnessLinks
         .map((l) => `<li>${escapeHtml(l.name)}: <code>${escapeHtml(l.url)}</code></li>`)
         .join('')}</ul></div>`
     : '';
@@ -51,7 +51,7 @@ ${links}
   <form method="post" action="/api/will">
     <label for="tok">owner token</label>
     <input id="tok" name="token" type="password" autocomplete="current-password" required>
-    <label for="letter">your words, in your voice — carried verbatim</label>
+    <label for="letter">your words, in your voice - carried verbatim</label>
     <textarea id="letter" name="letter" rows="6" placeholder="Say the thing.">${w ? escapeHtml(w.letter) : ''}</textarea>
     <label for="github">your github handle</label>
     <input id="github" name="github" value="${w ? escapeHtml(w.owner.github) : ''}" placeholder="PhiBao">
@@ -59,13 +59,13 @@ ${links}
     <input id="repo" name="repo" value="${w && w.instructions[0] && w.instructions[0].kind === 'github_issue' ? escapeHtml(w.instructions[0].repo) : ''}" placeholder="owner/repo">
     <label for="slack">slack channel for the message</label>
     <input id="slack" name="slack" value="" placeholder="C0…">
-    <label for="witnesses">witnesses — <code>Name &lt;U0123ABCD&gt;</code> or <code>Name &lt;email&gt;</code>, comma separated</label>
+    <label for="witnesses">witnesses - <code>Name &lt;U0123ABCD&gt;</code> or <code>Name &lt;email&gt;</code>, comma separated</label>
     <input id="witnesses" name="witnesses" value="${
       w ? escapeHtml(w.witnesses.map((x) => `${x.name}${x.slackUserId ? ` <${x.slackUserId}>` : x.email ? ` <${x.email}>` : ''}`).join(', ')) : ''
     }" placeholder="Ada <U0123ABCD>, Grace <grace@example.com>">
     <p class="muted small">A witness with a channel is <b>told</b> when the clock runs out. A witness with only a
-    name is never notified — and the board says so instead of pretending.</p>
-    <label for="sealed">a private thing, sealed (encrypted in your browser — this box never reads it)</label>
+    name is never notified - and the board says so instead of pretending.</p>
+    <label for="sealed">a private thing, sealed (encrypted in your browser - this box never reads it)</label>
     <textarea id="sealed" rows="3" placeholder="Type it here. It leaves this browser as ciphertext."></textarea>
     <label for="sealpass">passphrase for the sealed words</label>
     <input id="sealpass" type="password" autocomplete="new-password" placeholder="nobody can recover this for you">
@@ -85,7 +85,7 @@ ${links}
 <section class="card">
   <p class="kicker">withdraw, or rotate a lost token</p>
   <p class="muted">Revoking stops everything for this version. Rotating kills the token you have
-  and prints a new one — useful if you lost it, because a lost token means you cannot check in,
+  and prints a new one - useful if you lost it, because a lost token means you cannot check in,
   and cannot checking in is how a will executes.</p>
   <form id="revokeform" method="post" action="/api/revoke" data-json="1">
     <label for="rtok">owner token</label>
@@ -109,7 +109,7 @@ ${links}
     const plain = document.getElementById('sealed').value.trim();
     if (!plain) return;
     const pass = document.getElementById('sealpass').value;
-    if (!pass) { e.preventDefault(); alert('Sealed words need a passphrase — without it nobody, including you, can ever open them.'); return; }
+    if (!pass) { e.preventDefault(); alert('Sealed words need a passphrase - without it nobody, including you, can ever open them.'); return; }
     e.preventDefault();
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -133,10 +133,10 @@ ${links}
       const res = await fetch(target, { method: 'POST', body, headers: { accept: 'application/json' } });
       const json = await res.json().catch(() => ({ ok: false, error: 'unreadable response' }));
       out.textContent = JSON.stringify(json, null, 2);
-      if (json.token) out.textContent += '\n\nStore this now — it is not shown again.';
+      if (json.token) out.textContent += '\n\nStore this now - it is not shown again.';
     });
   }
 })();
 </script>`;
-  return shell({ title: 'Codicil — the will', active: 'will', demo: v.demo }, body);
+  return shell({ title: 'Codicil - the will', active: 'will', demo: v.demo }, body);
 }

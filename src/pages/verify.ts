@@ -1,4 +1,4 @@
-// src/pages/verify.ts — GET /verify. The ledger's tamper-evidence, checked in your browser.
+// src/pages/verify.ts - GET /verify. The ledger's tamper-evidence, checked in your browser.
 //
 // The page does not ask to be believed: it ships the recomputation, and the JSON it reads
 // comes from the same box that could have lied. That is the honest limit and it is printed.
@@ -18,10 +18,10 @@ export function renderVerify(v: VerifyView): string {
 
   const body = `
 <section class="card">
-  <p class="kicker">tamper-evidence · ${v.count} rows</p>
+  <p class="kicker">tamper-evidence / ${v.count} rows</p>
   <h1>${status}</h1>
   <p>Every row of the notice board carries <code>sha256(previous row hash | timestamp | kind | detail)</code>.
-  Editing one row breaks every hash after it. The server's own answer is below — then the same
+  Editing one row breaks every hash after it. The server's own answer is below - then the same
   arithmetic is run again in this page, on the bytes it was given.</p>
   <ul class="plain">
     <li>rows checked: <b>${v.chain.checked}</b></li>
@@ -34,7 +34,7 @@ export function renderVerify(v: VerifyView): string {
   <p class="muted small"><b>The honest limit:</b> a server that wanted to lie could write a fresh
   chain from row one. What this proves is that the board was not edited <i>after</i> it was
   written, and that the operator cannot quietly rewrite your record without also rewriting
-  every hash — which the ledger's own history would no longer match.</p>
+  every hash - which the ledger's own history would no longer match.</p>
 </section>
 <script>
 (async () => {
@@ -55,11 +55,11 @@ export function renderVerify(v: VerifyView): string {
     }
     out.textContent = broken === null
       ? 'verified in your browser: ' + rows.length + ' rows, chain intact\\nhead ' + (prev ?? 'genesis')
-      : 'MISMATCH at row ' + broken + ' — this board has been edited';
+      : 'MISMATCH at row ' + broken + ' - this board has been edited';
   } catch (err) {
     out.textContent = 'could not verify: ' + err;
   }
 })();
 </script>`;
-  return shell({ title: 'Codicil — verify the board', demo: v.demo }, body);
+  return shell({ title: 'Codicil - verify the board', demo: v.demo }, body);
 }

@@ -1,8 +1,8 @@
-// src/pages/open.ts — GET /open. Where a human opens the sealed letter.
+// src/pages/open.ts - GET /open. Where a human opens the sealed letter.
 //
 // The decryption happens in the browser, after the page has loaded. The executor's own box
 // never has the passphrase and never has the plaintext, so this page is not a service the
-// operator provides — it is arithmetic the reader runs locally.
+// operator provides - it is arithmetic the reader runs locally.
 
 import type { Will } from '../types.ts';
 import { escapeHtml, shell } from './layout.ts';
@@ -30,7 +30,7 @@ export function renderOpen(v: OpenView): string {
   <button id="go" type="button">Open it</button>
   <pre id="out" class="letter"></pre>
   <p class="muted small">AES-GCM with a PBKDF2-SHA256 key (200k iterations). Wrong passphrase = no plaintext,
-  not a wrong plaintext — the tag fails instead of guessing.</p>
+  not a wrong plaintext - the tag fails instead of guessing.</p>
 </section>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -61,9 +61,9 @@ $('go').addEventListener('click', async () => {
     out.textContent = new TextDecoder().decode(plain);
   } catch (err) {
     out.textContent = 'could not open: ' + (err && err.message ? err.message : err) +
-      '\\n\\nA wrong passphrase fails the authentication tag — which is the point.';
+      '\\n\\nA wrong passphrase fails the authentication tag - which is the point.';
   }
 });
 </script>`;
-  return shell({ title: 'Codicil — open the sealed letter', active: 'will', demo: v.demo }, body);
+  return shell({ title: 'Codicil - open the sealed letter', active: 'will', demo: v.demo }, body);
 }

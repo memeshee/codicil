@@ -1,4 +1,4 @@
-// src/server.ts — the HTTP spine. Node stdlib only; no framework, no dependency that could
+// src/server.ts - the HTTP spine. Node stdlib only; no framework, no dependency that could
 // rot between now and judging.
 //
 // Every inbound request runs the evaluator once (wake.ts), because on a Sprite an inbound
@@ -6,7 +6,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { join } from 'node:path';
 import { Store, hashToken, newToken, tokenMatches, utcDayKey } from './state.ts';
 import { applyCheckIn, applyRevoke, applyVouch, applyWillSigned, msToNextBoundary, toSnapshot } from './evaluator.ts';
 import { onWake, recordTick } from './wake.ts';
@@ -151,7 +151,7 @@ function buildWill(form: Record<string, string>, previous: Will | null, now: str
   if (!Number.isFinite(deadline) || deadline < minGrace) throw new Error(`deadline must be at least ${minGrace} minute(s)`);
 
   // Witness syntax: "Ada", "Ada <U0123ABCD>", "Grace <grace@example.com>".
-  // A witness with no channel can still vouch from their link — but they cannot be *told*,
+  // A witness with no channel can still vouch from their link - but they cannot be *told*,
   // and the ledger will say so instead of pretending.
   const witnesses = (form.witnesses ?? '')
     .split(',')
@@ -194,7 +194,7 @@ function buildWill(form: Record<string, string>, previous: Will | null, now: str
         if (!b.ct || !b.iv || !b.salt) throw new Error('incomplete blob');
         sealed = { ct: b.ct, iv: b.iv, salt: b.salt, ...(b.hint ? { hint: b.hint } : {}) };
       } catch {
-        throw new Error('the sealed letter was malformed — seal it in the browser, not by hand');
+        throw new Error('the sealed letter was malformed - seal it in the browser, not by hand');
       }
     } else {
       sealed = undefined;
@@ -272,12 +272,16 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     store.appendEvent('boot', { note: 'execution drained', ok: outcome.ok, failed: outcome.failed }, now);
   }
 
-  // static assets
-  if (method === 'GET' && (path === '/style.css' || path === '/favicon.svg')) {
+  // static assets: an explicit whitelist, so no path can ever walk out of public/
+  const STATIC: Record<string, string> = {
+    '/style.css': 'text/css; charset=utf-8',
+    '/favicon.svg': 'image/svg+xml',
+    '/trust-wake.svg': 'image/svg+xml',
+  };
+  if (method === 'GET' && STATIC[path]) {
     const file = join(process.cwd(), 'public', path.slice(1));
     if (existsSync(file)) {
-      const type = extname(file) === '.css' ? 'text/css; charset=utf-8' : 'image/svg+xml';
-      send(res, 200, readFileSync(file, 'utf8'), type);
+      send(res, 200, readFileSync(file, 'utf8'), STATIC[path]!);
       return;
     }
     send(res, 404, 'not found', 'text/plain');
@@ -322,7 +326,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         canTry: DEMO,
         revokedAt: s.revokedAt ?? null,
         wakeSources: [
-          'your own check-in, and any witness opening their notice — both are inbound requests',
+          'your own check-in, and any witness opening their notice - both are inbound requests',
           'a scheduled GitHub Action calling POST /tick every 30 minutes',
           'a second, independent external pinger on the same route, in a different failure domain',
         ],
@@ -367,7 +371,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const action = witnessMatch[4] ?? null;
     const witness = store.getWitness(wid!);
     if (!witness || !tokenMatches(token!, witness.tokenHash)) {
-      send(res, 404, shell({ title: 'Codicil — not found' }, '<section class="card"><h1>This link is not valid.</h1><p class="muted">Witness notices are private to one person.</p></section>'));
+      send(res, 404, shell({ title: 'Codicil - not found' }, '<section class="card"><h1>This link is not valid.</h1><p class="muted">Witness notices are private to one person.</p></section>'));
       return;
     }
     if (vouch) {
@@ -376,7 +380,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         return;
       }
       if (action === 'unknown') {
-        // "I don't know" is an answer, and it is recorded as one — it just does not reset
+        // "I don't know" is an answer, and it is recorded as one - it just does not reset
         // anything. Silence and uncertainty are not consent.
         store.appendEvent('quorum', { witnessId: wid, answer: 'unknown', counted: false }, now);
       } else {
@@ -555,16 +559,16 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const links = created.map((c) => ({ name: c.row.name, url: `${base}/w/${c.row.id}/${c.token}` }));
       const body = `
 <section class="card">
-  <p class="kicker">sealed · version ${will.version}</p>
+  <p class="kicker">sealed / version ${will.version}</p>
   <h1>The will is armed.</h1>
   <p>Send each witness their own link. They are shown once: only hashes are stored, so this page
   is the only copy that will ever exist.</p>
   <ul class="plain">${links.map((l) => `<li>${l.name}: <code>${l.url}</code></li>`).join('') || '<li class="muted">no witnesses named</li>'}</ul>
-  <p class="muted small">${will.instructions.length} instruction(s) · deadline ${will.policy.deadlineMinutes} min ·
-  nudge ${will.policy.nudgeGraceMinutes} min · plead ${will.policy.pleadGraceMinutes} min</p>
+  <p class="muted small">${will.instructions.length} instruction(s) / deadline ${will.policy.deadlineMinutes} min ·
+  nudge ${will.policy.nudgeGraceMinutes} min / plead ${will.policy.pleadGraceMinutes} min</p>
   <p><a href="/">back to the home page</a></p>
 </section>`;
-      send(res, 200, shell({ title: 'Codicil — will sealed', active: 'will', demo: DEMO }, body));
+      send(res, 200, shell({ title: 'Codicil - will sealed', active: 'will', demo: DEMO }, body));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       sendJson(res, 400, { ok: false, error: message });
@@ -572,7 +576,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
-  send(res, 404, shell({ title: 'Codicil — not found' }, '<section class="card"><h1>Nothing here.</h1></section>'));
+  send(res, 404, shell({ title: 'Codicil - not found' }, '<section class="card"><h1>Nothing here.</h1></section>'));
 }
 
 // --- boot -------------------------------------------------------------------

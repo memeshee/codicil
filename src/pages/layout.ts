@@ -1,4 +1,4 @@
-// src/pages/layout.ts — the shared shell. ADDITIVE (not a frozen interface): it exists so
+// src/pages/layout.ts - the shared shell. ADDITIVE (not a frozen interface): it exists so
 // the five pages share one document skeleton and one stylesheet. Stamped in executor-plan.md.
 
 export interface ShellOpts {
@@ -39,7 +39,7 @@ ${body}
 </main>
 <footer>
   <p>An executor that holds no key. Runs on a Fly.io Sprite; every credential stays at the gateway.</p>
-  ${opts.demo ? '<p class="demo-flag">DEMO configuration — shortened graces. Rows are labelled.</p>' : ''}
+  ${opts.demo ? '<p class="demo-flag">DEMO configuration - shortened graces. Rows are labelled.</p>' : ''}
 </footer>
 </body>
 </html>`;

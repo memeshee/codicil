@@ -1,4 +1,4 @@
-// src/pages/ledger.ts — GET /ledger. The PUBLIC NOTICE board: append-only, newest last.
+// src/pages/ledger.ts - GET /ledger. The PUBLIC NOTICE board: append-only, newest last.
 
 import type { NoticeRow } from '../ledger.ts';
 import { escapeHtml, shell } from './layout.ts';
@@ -24,13 +24,13 @@ export function renderLedger(v: LedgerView): string {
 
   const body = `
 <section class="card">
-  <p class="kicker">public notice board · append-only · ${v.count} entries</p>
+  <p class="kicker">public notice board / append-only / ${v.count} entries</p>
   <h1>In witness whereof</h1>
   <p class="muted">Every state change, in order, with its receipt where one exists. Nothing on this
   page is a letter body: the words stay between the owner and the people they wrote them for.</p>
   <ol class="board">${rows}</ol>
 </section>
 <p class="muted small">Written by the executor itself. There is no delete or edit path in the codebase,
-and every row is chained to the one before it — <a href="/verify">verify the chain in your browser</a>.</p>`;
-  return shell({ title: 'Codicil — public notice board', active: 'ledger', demo: v.demo }, body);
+and every row is chained to the one before it - <a href="/verify">verify the chain in your browser</a>.</p>`;
+  return shell({ title: 'Codicil - public notice board', active: 'ledger', demo: v.demo }, body);
 }

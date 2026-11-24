@@ -1,4 +1,4 @@
-// src/pages/home.ts — GET /. Phase, streak, countdown, and the HOW-I-WAKE box.
+// src/pages/home.ts - GET /. Phase, streak, countdown, and the HOW-I-WAKE box.
 
 import type { ExecRecord, StateSnapshot, Will } from '../types.ts';
 import { escapeHtml, shell } from './layout.ts';
@@ -27,6 +27,16 @@ const PHASE_COPY: Record<StateSnapshot['phase'], string> = {
   REVOKED: 'You withdrew consent. Nothing will execute until you sign a new version.',
 };
 
+
+const RAIL: Array<{ phase: StateSnapshot['phase']; note: string }> = [
+  { phase: 'DORMANT', note: 'nothing is being watched' },
+  { phase: 'ARMED', note: 'the clock runs from your last check-in' },
+  { phase: 'CONCERNED', note: 'deadline missed, the nudge goes out' },
+  { phase: 'PLEADING', note: 'witnesses are told, with a briefing' },
+  { phase: 'EXECUTING', note: 'instructions run, in order, bounded retries' },
+  { phase: 'EXECUTED', note: 'receipts, and the board keeps them' },
+];
+
 function humanMs(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const d = Math.floor(s / 86400);
@@ -42,7 +52,7 @@ export function renderHome(v: HomeView): string {
   const { snapshot: s, will } = v;
   const countdown =
     v.msToNextBoundary === null
-      ? '<p class="big">—</p>'
+      ? '<p class="big">-</p>'
       : `<p class="big" data-ms="${v.msToNextBoundary}" id="countdown">${humanMs(v.msToNextBoundary)}</p>`;
   const tickAge =
     v.lastTickAgeSeconds === null ? 'never since boot' : `${Math.round(v.lastTickAgeSeconds / 60)} min ago`;
@@ -54,13 +64,13 @@ export function renderHome(v: HomeView): string {
   <p class="kicker">you came back</p>
   <h1>You were gone, so I kept your word.</h1>
   <p>On ${escapeHtml(v.receipts.find((r) => r.executedAt)?.executedAt ?? s.lastCheckIn)} I carried out your instructions.
-  Everything I did is below, with its receipt. Nothing is undone by your returning — that was the point.</p>
+  Everything I did is below, with its receipt. Nothing is undone by your returning - that was the point.</p>
   <ul class="plain">
     ${v.receipts
       .map(
         (r) =>
-          `<li><b>${escapeHtml(r.kind)}</b> — ${escapeHtml(r.status)}${
-            r.resultRef ? ` · <a href="${escapeHtml(r.resultRef)}" rel="noopener">receipt</a>` : ''
+          `<li><b>${escapeHtml(r.kind)}</b> - ${escapeHtml(r.status)}${
+            r.resultRef ? ` / <a href="${escapeHtml(r.resultRef)}" rel="noopener">receipt</a>` : ''
           }</li>`,
       )
       .join('')}
@@ -75,7 +85,7 @@ export function renderHome(v: HomeView): string {
   <p class="kicker">revoked ${escapeHtml(v.revokedAt ?? '')}</p>
   <h1>Nothing will be carried out.</h1>
   <p>You withdrew the will. The revocation is on the board, the clock is stopped, and an
-  execution that was already running would have finished — which is why the revocation is
+  execution that was already running would have finished - which is why the revocation is
   recorded with its timestamp rather than erasing anything.</p>
   <p class="muted small">Signing a new version re-arms from scratch.</p>
 </section>`
@@ -83,75 +93,90 @@ export function renderHome(v: HomeView): string {
 
   const tryCard = v.canTry
     ? `<section class="card wake">
-  <p class="kicker">this is a demo instance · no token needed · start here</p>
+  <p class="kicker">start here</p>
   <h1>How to use this demo.</h1>
   <p>Everything on this page is real: the same code that would run on a Sprite, with the clock
   compressed so you can watch a whole custody cycle in about a minute. Every row it writes is
   labelled <code>DEMO</code>.</p>
   <ol class="ops">
-    <li><b>Sign a throwaway will</b> at <a href="/try">/try</a> — or follow this link, prefilled for
-      you: <a href="/try?name=a%20visitor&amp;letter=I%20left%20the%20fig%20tree%20to%20Ada.&amp;witnesses=Ada">sign and watch</a>.</li>
+    <li><b>Sign a throwaway will.</b> One click, prefilled, no token and no account.</li>
     <li><b>Watch the phase</b> at the top of this page. It moves on its own:
       ARMED → CONCERNED (deadline missed, a nudge goes out) → PLEADING (the witnesses are written to)
       → EXECUTING → EXECUTED.</li>
     <li><b>Every reload is a wake.</b> A Sprite has no clock, so each request is what makes time pass
-      here. Refreshing the page genuinely advances the ladder — the demo is not a recording.</li>
+      here. Refreshing the page genuinely advances the ladder - the demo is not a recording.</li>
     <li><b>Read what it did</b> on the <a href="/ledger">notice board</a>, then check the chain
       yourself on <a href="/verify">/verify</a>: your browser recomputes every hash.</li>
-    <li><b>Answer as a witness.</b> Signing gives you private witness links — open one and try
+    <li><b>Answer as a witness.</b> Signing gives you private witness links - open one and try
       "I know they are safe" and "I don't know". Both are recorded; only the first stands the clock down.</li>
     <li><b>Reset it</b> with the owner token, printed on /try after you sign. Pasting it into the
       check-in box on this page returns the ladder to ARMED.</li>
   </ol>
-  <p class="muted small">If nothing loads for a few seconds, the machine is asleep and waking —
+  <p><a class="cta" href="/try?name=a%20visitor&amp;letter=I%20left%20the%20fig%20tree%20to%20Ada.&amp;witnesses=Ada">Watch a will run</a></p>
+  <p class="muted small">If nothing loads for a few seconds, the machine is asleep and waking -
   this instance scales to zero between visitors. It answers on its own.</p>
 </section>`
     : '';
 
+  const railIndex = RAIL.findIndex((r) => r.phase === s.phase);
+  const rail = RAIL.map((r, i) =>
+    `<li class="${i === railIndex ? 'now' : i < railIndex ? 'done' : ''}"><span class="phase">${r.phase}</span><span class="note">${r.note}</span></li>`,
+  ).join('');
+
   const body = `
-${returnPage}${revoked}${tryCard}
+${returnPage}${revoked}
 <section class="hero">
-  <p class="kicker">phase</p>
+  <p class="kicker">current phase</p>
   <h1>${s.phase}</h1>
   <p class="phase-copy">${escapeHtml(PHASE_COPY[s.phase])}</p>
-</section>
-
-<section class="grid">
-  <div class="card">
-    <p class="kicker">your streak</p>
-    <p class="big">${s.streakDays} <span class="unit">day${s.streakDays === 1 ? '' : 's'}</span></p>
-    <p class="muted">last check-in ${escapeHtml(s.lastCheckIn)}</p>
-    <form method="post" action="/api/checkin" class="checkin">
-      <label for="tok">owner token</label>
-      <input id="tok" name="token" type="password" autocomplete="current-password" required placeholder="paste your token">
-      <button type="submit">I'm here</button>
-    </form>
-    <p class="muted small">A check-in is the only thing that resets the clock apart from a witness vouch.</p>
-  </div>
-
-  <div class="card">
-    <p class="kicker">next boundary</p>
-    ${countdown}
-    <p class="muted">phase ${s.phase} · will version ${s.willVersion} · owner ${owner}</p>
-    <ul class="plain">
-      <li>deadline ${will ? will.policy.deadlineMinutes : '—'} min</li>
-      <li>nudge grace ${will ? will.policy.nudgeGraceMinutes : '—'} min</li>
-      <li>plead grace ${will ? will.policy.pleadGraceMinutes : '—'} min</li>
-    </ul>
+  ${countdown}
+  <div class="statusbar">
+    <span>phase <b>${s.phase}</b></span>
+    <span>will version ${s.willVersion}</span>
+    <span>owner ${owner}</span>
+    ${v.demo ? '<span class=\'seal\'>demo instance</span>' : ''}
   </div>
 </section>
 
-<section class="card wake">
-  <p class="kicker">how i wake — stated plainly</p>
-  <p>A Sprite sleeps. It has no clock of its own: it pauses about thirty seconds after
-  activity stops, and runs again only when a request arrives. So this executor does not
-  "watch" anything by magic. It is woken by:</p>
-  <ul>
+<section>
+  <h2>${s.streakDays} day${s.streakDays === 1 ? '' : 's'} of answering</h2>
+  <p class="muted">Last check-in ${escapeHtml(s.lastCheckIn)}.</p>
+  <form method="post" action="/api/checkin" class="checkin">
+    <label for="tok" class="small">owner token</label>
+    <input id="tok" name="token" type="password" autocomplete="current-password" required placeholder="paste your token">
+    <button type="submit">I am here</button>
+  </form>
+  <p class="small muted">A check-in is the only thing that resets the clock, apart from a witness vouch.</p>
+  <aside class="aside">
+    deadline ${will ? will.policy.deadlineMinutes : '-'} min<br>
+    nudge grace ${will ? will.policy.nudgeGraceMinutes : '-'} min<br>
+    plead grace ${will ? will.policy.pleadGraceMinutes : '-'} min
+  </aside>
+</section>
+
+<section>
+  <h2>Six phases, and only two things move you back</h2>
+  <p class="muted">Your check-in, or a witness quorum. Nothing else resets this clock, including
+  anything the executor discovers.</p>
+  <ol class="rail">${rail}</ol>
+</section>
+
+<section>
+  <h2>A Sprite has no clock of its own</h2>
+  <p>It pauses about thirty seconds after activity stops, and runs again only when a request
+  arrives. So this executor does not watch anything by magic. It is woken by:</p>
+  <ul class="plain">
     ${v.wakeSources.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}
   </ul>
-  <p class="muted">Last wake: ${escapeHtml(tickAge)} · last tick recorded ${s.lastTickAt ? escapeHtml(s.lastTickAt) : 'never'}.
+  <figure>
+    <img src="/trust-wake.svg" alt="Two paths: the trust path, where credentials stay at the connector gateway, and the wake path, which names every source of time.">
+    <figcaption>The two paths that matter. Every outward call crosses the gateway, which holds the
+    credential. Every way time can pass is named, because the platform does not provide a scheduler.</figcaption>
+  </figure>
+  <p class="small muted">Last wake ${escapeHtml(tickAge)}, last tick recorded ${s.lastTickAt ? escapeHtml(s.lastTickAt) : 'never'}.
   If both pingers fail, the deadline slips. That is a real limitation, printed here rather than hidden.</p>
 </section>
+${tryCard}
 
 <script>
 (() => {
@@ -170,7 +195,7 @@ ${returnPage}${revoked}${tryCard}
 })();
 </script>`;
 
-  return shell({ title: 'Codicil — an executor that holds no key', active: 'home', demo: v.demo }, body);
+  return shell({ title: 'Codicil - an executor that holds no key', active: 'home', demo: v.demo }, body);
 }
 
 export { humanMs };
