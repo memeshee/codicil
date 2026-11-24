@@ -138,7 +138,11 @@ export async function githubLastCommit(connectorId: string, repo: string) {
  */
 export async function emailSend(connectorId: string, to: string, subject: string, text: string) {
   const provider = process.env.MAIL_PROVIDER ?? 'agentmail';
-  const path = process.env.MAIL_PATH ?? '/messages';
+  // AgentMail's connector only accepts /v0 paths, and mail is sent on an inbox, not on the
+  // provider root: POST /v0/inboxes/<inbox>/messages/send. Verified against the live gateway.
+  const base = process.env.MAIL_PATH ?? '/v0';
+  const inbox = process.env.MAIL_INBOX ?? '';
+  const path = inbox ? `${base}/inboxes/${encodeURIComponent(inbox)}/messages/send` : `${base}/messages/send`;
   return gatewayCall<unknown>(`/${provider}/${connectorId}${path}`, {
     method: 'POST',
     body: { to, subject, text },
@@ -172,17 +176,22 @@ export async function llmChat(
   messages: Array<{ role: string; content: string }>,
   pathHint?: string,
 ): Promise<GatewayResult<unknown>> {
-  const candidates = [pathHint, '/chat/completions', '/v1/chat/completions'].filter(Boolean) as string[];
+  // '/v1/chat/completions' first: it is the shape the Ollama connector accepts.
+  const candidates = [pathHint, '/v1/chat/completions', '/chat/completions'].filter(Boolean) as string[];
   let last: GatewayResult<unknown> | null = null;
   for (const p of candidates) {
     const path = p.startsWith('/') ? p : `/${p}`;
     last = await gatewayCall<unknown>(`/ollama/${connectorId}${path}`, {
       method: 'POST',
-      body: { model, messages, max_tokens: 320, temperature: 0.6 },
+      body: { model, messages, max_tokens: 900, temperature: 0.6 },
       timeoutMs: 45_000,
     });
     if (last.ok) return last;
-    if (last.status !== 404) return last; // a real error, not a path mismatch
+    // The gateway answers 403 "endpoint is not supported" for a path the connector does not
+    // serve, which is a path mismatch, not a real failure. Treating it as fatal stopped the
+    // ladder on the first candidate and silently dropped every letter back to the template.
+    const mismatch = last.status === 404 || last.status === 403;
+    if (!mismatch) return last;
   }
   return last ?? { ok: false, status: 0, body: null, text: '' };
 }

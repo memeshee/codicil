@@ -232,8 +232,23 @@ function extractText(body: unknown): string | null {
   if (Array.isArray(choices) && choices.length > 0) {
     const c = choices[0] as Record<string, unknown>;
     const msg = c.message as Record<string, unknown> | undefined;
-    if (msg && typeof msg.content === 'string') return msg.content;
-    if (typeof c.text === 'string') return c.text;
+    if (msg) {
+      const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+      if (content) return content;
+      // A reasoning model spends its budget thinking and leaves content empty, with the prose in
+      // `reasoning`. Reading only `content` made every Ollama call look like a failure and dropped
+      // the letter back to the template, which is exactly the row the ledger was reporting.
+      const reasoning = typeof msg.reasoning === 'string' ? msg.reasoning.trim() : '';
+      if (reasoning) {
+        // The reasoning field is the model's working, not its answer. Take the closing paragraph
+        // and cap it, so a brief stays a brief instead of landing 3,800 characters of thinking
+        // in a witness's inbox.
+        const paras = reasoning.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+        const answer = paras.length > 1 ? paras[paras.length - 1] : reasoning;
+        return answer.length > 700 ? answer.slice(-700) : answer;
+      }
+    }
+    if (typeof c.text === 'string' && c.text.trim()) return c.text;
   }
   if (typeof o.response === 'string') return o.response;
   return null;
