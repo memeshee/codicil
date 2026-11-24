@@ -1,2 +1,0 @@
-{"ts":"2026-11-24T03:47:18Z","mode":"outside","check":"inbound request woke it: HTTP 200 in 0.006507s (cold wake)","result":"pass"}
-{"ts":"2026-11-24T03:47:19Z","mode":"outside","check":"POST /tick accepted (200)","result":"pass"}

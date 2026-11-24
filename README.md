@@ -82,8 +82,8 @@ Test: `npm test` · Type-check: `npm run typecheck`
 
 ## Day 0 platform facts
 
-Established from Fly's documentation before any product code was written. Notes in
-`discovery/hacksgiving/`.
+Established from Fly's documentation before any product code was written. They are listed here
+in full because they are what the design rests on — not because a design document says so.
 
 - **No scheduler.** Pause ~30s after activity; wake only on inbound HTTP or a held Task
   (max 1h, heartbeat-renewed via `/.sprite/api.sock`). Designs that "notice" something on a
@@ -155,15 +155,14 @@ of custody; it demonstrates the architecture and the economics that make such a 
 
 ## Built at the event, what was reused, and AI assistance
 
-- **Built inside the window.** The repository opens at commit `be28ddf` (Nov 24, inside the
-  Hacksgiving week) and every source file was written after it. `discovery/` holds the research
-  record, kept deliberately rather than squashed.
+- **Built inside the window.** The repository opens at commit `c3bc3ab` (Nov 24, inside the
+  Hacksgiving week) and every source file was written after it.
 - **Reused:** the Node standard library and `node:sqlite` — zero third-party runtime
   dependencies — plus Fly's Sprites platform and connector gateway. No prior project was ported;
   this is net-new code.
 - **AI assistance, stated plainly:** the build was driven by Hermes Agent, which ran the
-  discovery research, wrote the spec and the executor plan, and wrote the implementation. The
-  check on that is not a claim but the suite: 25 tests covering every transition, the reset
+  competition research, wrote the product spec and the build plan, and wrote the implementation.
+  The check on that is not a claim but the suite: 25 tests covering every transition, the reset
   rules, token handling, the no-`Authorization`-header property and retry bounds, plus the demo
   run whose transcript ships with the entry.
 

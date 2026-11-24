@@ -10,3 +10,6 @@ demo/*.mp4
 *.env
 .sprite-secrets/
 .sprite
+# local planning record (competition research, scoring, spec) stays outside this repo
+discovery/
+planning/
