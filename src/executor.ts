@@ -26,6 +26,11 @@ export interface ExecOutcome {
 const LOCK_KEY = 'executionLock';
 const LOCK_TTL_MS = 15 * 60_000;
 
+/** Every meaningful step is printed, because the demo shows this log on screen. */
+function log(line: string): void {
+  console.log(`[executor] ${line}`);
+}
+
 function connectorFor(list: ConnectorInfo[], name: string): ConnectorInfo | null {
   return list.find((c) => c.provider.toLowerCase().includes(name)) ?? null;
 }
@@ -47,6 +52,35 @@ function refFrom(payload: unknown): string | null {
   return null;
 }
 
+/**
+ * The CONCERNED beat: nudge the owner. This is a real connector call, not just a ledger row —
+ * the demo script promises a Slack message arrives at the nudge stage, and a promise in the
+ * script is a requirement on the code.
+ */
+export async function sendNudge(
+  deps: Pick<ExecDeps, 'store' | 'connectors' | 'now'>,
+  will: { owner: { name: string }; instructions: Instruction[] },
+  channel: string,
+): Promise<{ ok: boolean; ref: string | null; note?: string }> {
+  const { store, connectors, now } = deps;
+  const sl = connectorFor(connectors, 'slack');
+  const text =
+    `${will.owner.name} has not checked in. The executor is at CONCERNED and will write to ` +
+    `the named witnesses if this is not answered. Reply by checking in.`;
+  if (!sl) {
+    store.appendEvent('execute_fail', { kind: 'nudge', reason: 'no slack connector granted' }, now);
+    return { ok: false, ref: null, note: 'no slack connector granted' };
+  }
+  const res = await attempt(() => slackPostMessage(sl.id, channel, text));
+  if (!res.ok) {
+    store.appendEvent('execute_fail', { kind: 'nudge', reason: `slack ${res.status}` }, now);
+    return { ok: false, ref: null, note: `slack ${res.status}` };
+  }
+  const ref = refFrom(res.body);
+  store.appendEvent('execute_ok', { kind: 'nudge', target: channel, ref }, now);
+  return { ok: true, ref };
+}
+
 export async function executeWill(deps: ExecDeps): Promise<ExecOutcome> {
   const { store, connectors, mind, now } = deps;
 
@@ -66,11 +100,13 @@ export async function executeWill(deps: ExecDeps): Promise<ExecOutcome> {
   // 1. Investigate (read-only, never resets the clock).
   const investigation = await investigate(will, mind);
   store.appendEvent('investigate', { source: investigation.source, summary: investigation.summary, ...investigation.detail }, now);
+  log(`investigate: ${investigation.summary}`);
 
   // 2. Compose the closing note; the owner's words ride verbatim.
   const letter = await composeLetter(will, investigation, mind);
   outcome.letterUsedModel = letter.usedModel;
   store.appendEvent('letter_composed', { usedModel: letter.usedModel, chars: letter.text.length }, now);
+  log(`letter composed (${letter.usedModel ? 'model' : 'template'}, ${letter.text.length} chars)`);
 
   // 3. Run the instructions in ordinal order.
   const rows = store.listInstructions().filter((r) => r.status === 'pending');
@@ -85,6 +121,7 @@ export async function executeWill(deps: ExecDeps): Promise<ExecOutcome> {
         const ref = refFrom(res.body);
         store.markInstruction(row.id, 'ok', ref);
         store.appendEvent('execute_ok', { kind: op.kind, target: op.repo, ref }, now);
+        log(`execute ok: github_issue ${op.repo} → ${ref ?? 'no ref returned'}`);
         outcome.ok += 1;
         outcome.results.push({ kind: op.kind, status: 'ok', ref });
       } else if (op.kind === 'slack_post') {
@@ -112,6 +149,7 @@ export async function executeWill(deps: ExecDeps): Promise<ExecOutcome> {
       const note = err instanceof Error ? err.message : String(err);
       store.markInstruction(row.id, 'failed', null);
       store.appendEvent('execute_fail', { kind: op.kind, reason: note }, now);
+      log(`execute FAILED: ${op.kind} — ${note}`);
       outcome.failed += 1;
       outcome.results.push({ kind: op.kind, status: 'failed', ref: null, note });
     }

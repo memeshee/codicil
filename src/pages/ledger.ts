@@ -25,7 +25,7 @@ export function renderLedger(v: LedgerView): string {
   const body = `
 <section class="card">
   <p class="kicker">public notice board · append-only · ${v.count} entries</p>
-  <h1>What it has actually done</h1>
+  <h1>In witness whereof</h1>
   <p class="muted">Every state change, in order, with its receipt where one exists. Nothing on this
   page is a letter body: the words stay between the owner and the people they wrote them for.</p>
   <ol class="board">${rows}</ol>

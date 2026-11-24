@@ -1,6 +1,6 @@
 // src/pages/home.ts — GET /. Phase, streak, countdown, and the HOW-I-WAKE box.
 
-import type { StateSnapshot, Will } from '../types.ts';
+import type { ExecRecord, StateSnapshot, Will } from '../types.ts';
 import { escapeHtml, shell } from './layout.ts';
 
 export interface HomeView {
@@ -10,6 +10,8 @@ export interface HomeView {
   lastTickAgeSeconds: number | null;
   demo: boolean;
   wakeSources: string[];
+  /** Populated only when phase is EXECUTED: the owner's return page. */
+  receipts?: ExecRecord[];
 }
 
 const PHASE_COPY: Record<StateSnapshot['phase'], string> = {
@@ -42,7 +44,30 @@ export function renderHome(v: HomeView): string {
     v.lastTickAgeSeconds === null ? 'never since boot' : `${Math.round(v.lastTickAgeSeconds / 60)} min ago`;
   const owner = will ? `${escapeHtml(will.owner.name)} (@${escapeHtml(will.owner.github)})` : 'unset';
 
+  const returnPage =
+    s.phase === 'EXECUTED' && v.receipts && v.receipts.length
+      ? `<section class="card wake" style="border-left-color:#9a3412">
+  <p class="kicker">you came back</p>
+  <h1>You were gone, so I kept your word.</h1>
+  <p>On ${escapeHtml(v.receipts.find((r) => r.executedAt)?.executedAt ?? s.lastCheckIn)} I carried out your instructions.
+  Everything I did is below, with its receipt. Nothing is undone by your returning — that was the point.</p>
+  <ul class="plain">
+    ${v.receipts
+      .map(
+        (r) =>
+          `<li><b>${escapeHtml(r.kind)}</b> — ${escapeHtml(r.status)}${
+            r.resultRef ? ` · <a href="${escapeHtml(r.resultRef)}" rel="noopener">receipt</a>` : ''
+          }</li>`,
+      )
+      .join('')}
+  </ul>
+  <p class="muted small">To arm again, sign a new version of the will: <a href="/will">the will</a>.
+  The next version starts at ARMED with your new deadline.</p>
+</section>`
+      : '';
+
   const body = `
+${returnPage}
 <section class="hero">
   <p class="kicker">phase</p>
   <h1>${s.phase}</h1>

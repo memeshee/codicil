@@ -10,7 +10,7 @@ import { extname, join } from 'node:path';
 import { Store, hashToken, newToken, tokenMatches, utcDayKey } from './state.ts';
 import { applyCheckIn, applyVouch, applyWillSigned, msToNextBoundary, toSnapshot } from './evaluator.ts';
 import { onWake, recordTick } from './wake.ts';
-import { executeWill } from './executor.ts';
+import { executeWill, sendNudge } from './executor.ts';
 import { GATEWAY, listConnectors, type ConnectorInfo } from './connectors.ts';
 import { noticeBoard } from './ledger.ts';
 import type { Instruction, Will, WitnessSpec } from './types.ts';
@@ -185,6 +185,22 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const wake = await onWake(store, now);
   let phase = wake.state.phase;
 
+  // A nudge is a real call, not a ledger row: the owner gets told, through the connector,
+  // that the clock has run out.
+  if (wake.transitions.some((t) => t.kind === 'nudge')) {
+    const will = store.getWill();
+    const channel =
+      (will?.instructions.find((i) => i.kind === 'slack_post') as { target?: string } | undefined)?.target ??
+      process.env.NUDGE_CHANNEL ??
+      '';
+    if (will && channel) {
+      const nudge = await sendNudge({ store, connectors: await connectors(), now }, will, channel);
+      console.log(`[nudge] slack ${nudge.ok ? 'sent' : 'failed'}${nudge.ref ? ` ref=${nudge.ref}` : ''}${nudge.note ? ` (${nudge.note})` : ''}`);
+    } else {
+      store.appendEvent('execute_fail', { kind: 'nudge', reason: 'no channel configured' }, now);
+    }
+  }
+
   // Drain EXECUTING exactly once, here, so every path (tick, page view, check-in) can
   // complete an execution that came due while the box was asleep.
   if (phase === 'EXECUTING') {
@@ -239,6 +255,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         msToNextBoundary: msToNextBoundary(s, will, now),
         lastTickAgeSeconds,
         demo: DEMO,
+        receipts: s.phase === 'EXECUTED' ? store.listInstructions() : [],
         wakeSources: [
           'your own check-in, and any witness opening their notice — both are inbound requests',
           'a scheduled GitHub Action calling POST /tick every 30 minutes',
@@ -295,7 +312,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       store.setState(r.state);
       r.events.forEach((e) => store.appendEvent(e.kind, e.detail, now));
     }
-    send(res, 200, renderWitness({ witness, will: store.getWill(), snapshot: toSnapshot(store.getState(now), store.getWill()), demo: DEMO, vouched: Boolean(witness.vouchedAt) || Boolean(vouch && method === 'POST') }));
+    send(res, 200, renderWitness({ witness, will: store.getWill(), snapshot: toSnapshot(store.getState(now), store.getWill()), demo: DEMO, vouched: Boolean(witness.vouchedAt) || Boolean(vouch && method === 'POST'), lastCheckIn: store.getState(now).lastCheckIn }));
     return;
   }
 

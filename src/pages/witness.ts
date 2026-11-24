@@ -9,6 +9,7 @@ export interface WitnessView {
   snapshot: StateSnapshot;
   demo: boolean;
   vouched: boolean;
+  lastCheckIn?: string;
 }
 
 export function renderWitness(v: WitnessView): string {
@@ -28,6 +29,7 @@ export function renderWitness(v: WitnessView): string {
   <p>You are named as a witness in ${owner}&rsquo;s will. That means one thing: if they stop
   answering, someone who knows them should be asked before anything is carried out.</p>
   ${noticed ? `<p class="muted">you were written to on ${noticed}</p>` : ''}
+  ${v.lastCheckIn ? `<p class="muted">${owner} was last seen on ${escapeHtml(v.lastCheckIn)} — that is the silence this notice is about.</p>` : ''}
   <p>If you know ${owner} is safe — travelling, unwell, simply offline — say so. Your word stops
   the clock. If you do not know, do nothing, and say nothing: silence here is an answer too.</p>
   <form method="post" action="/w/${escapeHtml(v.witness.id)}/vouch">

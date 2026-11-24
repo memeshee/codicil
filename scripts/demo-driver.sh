@@ -15,8 +15,8 @@ set -euo pipefail
 BASE="${BASE:-http://localhost:8099}"
 DATA_DIR="${DATA_DIR:-.}"
 TRANSCRIPT="${TRANSCRIPT:-demo/transcript.txt}"
-GRACE="${GRACE:-0.1}"     # minutes; 0.1 = 6 seconds
-STEP_WAIT="${STEP_WAIT:-7}"
+GRACE="${GRACE:-0.25}"   # minutes; 0.25 = 15 seconds, enough room to narrate a beat
+STEP_WAIT="${STEP_WAIT:-17}"
 
 REAL=0
 NO_SIGN=0
@@ -52,6 +52,26 @@ ledger_tail() {
 say "codicil demo driver — base=$BASE"
 if [ "$REAL" = 0 ] && [ "$NO_SIGN" = 0 ]; then
   TOKEN=$(cat "$DATA_DIR/owner-token")
+
+  # State pre-check: never start a beat sequence from an unknown phase. A readable sentence,
+  # not an opaque failure halfway through a recording.
+  CURRENT=$(phase)
+  case "$CURRENT" in
+    ARMED*|DORMANT*)
+      say "pre-check ok: $CURRENT" ;;
+    EXECUTED*)
+      say "REFUSING TO START: this will has already been executed ($CURRENT)."
+      say "Sign a new version first (POST /api/will), or run with --real to only tick and report."
+      exit 3 ;;
+    CONCERNED*|PLEADING*|EXECUTING*)
+      say "REFUSING TO START: the clock is already running ($CURRENT)."
+      say "Check in as the owner first: BASE=$BASE DATA_DIR=$DATA_DIR ./scripts/streak-checkin.sh"
+      exit 3 ;;
+    *)
+      say "REFUSING TO START: unexpected phase ($CURRENT)"
+      exit 3 ;;
+  esac
+
   say "signing a will with ${GRACE}m graces"
   curl -fsS -X POST "$BASE/api/will" \
     -H 'content-type: application/x-www-form-urlencoded' \
