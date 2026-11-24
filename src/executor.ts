@@ -5,7 +5,7 @@
 // re-arming loop — EXECUTED is terminal for that will version.
 
 import type { Briefing, Instruction, Will } from './types.ts';
-import { githubCreateIssue, slackPostMessage, type ConnectorInfo } from './connectors.ts';
+import { emailSend, githubCreateIssue, slackPostMessage, type ConnectorInfo } from './connectors.ts';
 import { composeLetter, investigate, type MindContext } from './mind.ts';
 import type { Store } from './state.ts';
 
@@ -94,12 +94,32 @@ export async function notifyWitnesses(
       unreachable.push(w.name);
       continue;
     }
+    // Email is the second channel, and it is the one most witnesses actually have. It only
+    // counts when a mail connector is configured; otherwise the row stays honest.
+    const mail = process.env.MAIL_CONNECTOR_ID ?? '';
+    const to = (w as { email?: string }).email ?? '';
+    if (mail && to) {
+      const res = await emailSend(mail, to, `About ${will.owner.name}`, `${will.owner.name} has gone quiet. You are named as a witness. ` +
+        `Nothing has been carried out yet. Open your private link to read what was checked, ` +
+        `and to say if you know they are safe.`);
+      if (res.ok) {
+        store.markWitnessNotified(w.id);
+        store.appendEvent('witness_delivered', { witness: w.id, via: 'email', ref: to }, now);
+        sent.push(w.name);
+        continue;
+      }
+      store.appendEvent('witness_delivered', { witness: w.id, via: 'email', ok: false, reason: `mail ${res.status}` }, now);
+      unreachable.push(w.name);
+      continue;
+    }
     store.appendEvent(
       'witness_delivered',
       {
         witness: w.id,
         ok: false,
-        reason: !w.slackUserId ? 'no channel on file for this witness' : 'no slack connector granted',
+        reason: !w.slackUserId && !to
+          ? 'no channel on file for this witness'
+          : mail ? 'no slack connector granted' : 'no slack or mail connector granted',
       },
       now,
     );

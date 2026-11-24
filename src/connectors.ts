@@ -120,6 +120,31 @@ export async function githubPublicEvents(connectorId: string, owner: string) {
   return gatewayCall<unknown>(`/github/${connectorId}/users/${owner}/events/public`);
 }
 
+/** Who the connector acts as. Also the cheapest proof that the grant works. */
+export async function githubMe(connectorId: string) {
+  return gatewayCall<{ login?: string }>(`/github/${connectorId}/user`);
+}
+
+/** The last public sign of life on a repo the owner named. */
+export async function githubLastCommit(connectorId: string, repo: string) {
+  return gatewayCall<Array<{ commit?: { author?: { date?: string }; message?: string } }>>(
+    `/github/${connectorId}/repos/${repo}/commits?per_page=1`,
+  );
+}
+
+/**
+ * Mail through a custom-API connector (AgentMail or any token-auth mail API).
+ * Provider and path are configuration, not code, because custom connectors vary.
+ */
+export async function emailSend(connectorId: string, to: string, subject: string, text: string) {
+  const provider = process.env.MAIL_PROVIDER ?? 'agentmail';
+  const path = process.env.MAIL_PATH ?? '/messages';
+  return gatewayCall<unknown>(`/${provider}/${connectorId}${path}`, {
+    method: 'POST',
+    body: { to, subject, text },
+  });
+}
+
 /** The farewell issue. */
 export async function githubCreateIssue(connectorId: string, repo: string, title: string, body: string) {
   return gatewayCall<{ html_url?: string; number?: number }>(`/github/${connectorId}/repos/${repo}/issues`, {
