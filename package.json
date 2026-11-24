@@ -1,0 +1,17 @@
+{
+  "name": "codicil",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An agent that executes your written instructions if you go silent — on a Fly.io Sprite, holding no keys.",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "start": "node --experimental-sqlite --experimental-strip-types src/server.ts",
+    "dev": "DEMO=1 node --experimental-sqlite --experimental-strip-types src/server.ts",
+    "test": "node --experimental-sqlite --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

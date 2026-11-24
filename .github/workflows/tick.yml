@@ -1,0 +1,28 @@
+name: tick
+
+# Pinger #1. A Sprite has no scheduler: it pauses when idle and wakes only on an inbound
+# request. This workflow is one of the two wake sources the home page discloses.
+# If it stops, the deadline slips — that is stated in the README rather than hidden.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake the executor and run the state machine once
+        run: |
+          curl -fsS -X POST "${{ vars.SPRITE_URL }}/tick" \
+            -H "X-Ping-Token: ${{ secrets.PING_TOKEN }}" \
+            --max-time 30 || true
+      - name: Record what phase it is in (visible in the Actions log)
+        run: |
+          curl -fsS "${{ vars.SPRITE_URL }}/healthz" --max-time 30 || true
